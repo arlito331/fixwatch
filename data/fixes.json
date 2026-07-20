@@ -1,11 +1,1 @@
-[
-  {
-    "id": "test-verify-001",
-    "lat": 8.9917,
-    "lng": -79.5297,
-    "label": "El Cangrejo test fix",
-    "fix_date": "2026-06-01",
-    "notes": "end-to-end verification entry",
-    "logged_at": "2026-07-17T00:00:00Z"
-  }
-]
+[]
