@@ -38,11 +38,13 @@ a{color:inherit;}
 .field-hint{font-size:10px;color:var(--dim);margin-top:5px;line-height:1.5;}
 .field-row{display:flex;gap:10px;}
 .field-row .field{flex:1;}
+.field input[type=file]{padding:8px;font-size:11px;color:var(--muted);}
 
 .btn{background:var(--accent);color:#04170c;border:none;border-radius:5px;padding:10px 18px;font-size:11px;font-weight:700;letter-spacing:0.5px;cursor:pointer;}
 .btn:hover{background:#5bdb90;}
 .btn:disabled{opacity:0.5;cursor:not-allowed;}
 .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--muted);}
+.btn.small{padding:6px 12px;font-size:10px;}
 
 #pickMap{height:280px;border-radius:8px;overflow:hidden;margin-bottom:12px;border:1px solid var(--border);}
 #listMap{height:360px;border-radius:8px;overflow:hidden;margin-bottom:16px;border:1px solid var(--border);}
@@ -50,16 +52,21 @@ a{color:inherit;}
 .coord-readout{font-size:11px;color:var(--muted);font-family:monospace;margin-top:6px;}
 .coord-readout.unset{color:var(--dim);}
 
-#logMsg{font-size:11px;margin-top:12px;min-height:14px;}
-#logMsg.ok{color:var(--accent);}
-#logMsg.err{color:var(--red);}
+#logMsg,.row-msg{font-size:11px;margin-top:12px;min-height:14px;}
+#logMsg.ok,.row-msg.ok{color:var(--accent);}
+#logMsg.err,.row-msg.err{color:var(--red);}
+
+.setup-banner{display:none;background:rgba(240,160,48,.08);border:1px solid rgba(240,160,48,.35);color:var(--orange);border-radius:8px;padding:12px 16px;font-size:12px;line-height:1.6;margin-bottom:16px;}
+.setup-banner b{cursor:pointer;text-decoration:underline;}
 
 .summary-row{display:flex;gap:12px;margin-bottom:16px;}
 .summary-tile{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
 .summary-tile .n{font-size:22px;font-weight:800;}
 .summary-tile .l{font-size:9px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase;margin-top:2px;}
 
-.fix-row{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;}
+.fix-row{background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;}
+.fix-head{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;}
+.fix-head:hover{background:#202021;}
 .fix-badge{flex-shrink:0;width:56px;height:56px;border-radius:8px;background:#0a0a0a;border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;}
 .fix-badge .d{font-size:16px;font-weight:800;color:var(--accent);line-height:1;}
 .fix-badge .l{font-size:7px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-top:2px;}
@@ -67,10 +74,37 @@ a{color:inherit;}
 .fix-label{font-size:13px;font-weight:600;}
 .fix-meta{font-size:10px;color:var(--dim);margin-top:2px;font-family:monospace;}
 .fix-notes{font-size:11px;color:var(--muted);margin-top:4px;}
+.fix-photocount{flex-shrink:0;font-size:10px;color:var(--dim);}
+.fix-chev{flex-shrink:0;color:var(--dim);font-size:11px;transition:transform .15s;}
+.fix-row.open .fix-chev{transform:rotate(90deg);}
+
+.fix-detail{display:none;border-top:1px solid var(--border);padding:16px 14px;background:#161617;}
+.fix-row.open .fix-detail{display:block;}
+
+.tl-group{margin-bottom:16px;}
+.tl-day{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;}
+.tl-day .dn{font-size:13px;font-weight:800;color:var(--accent);}
+.tl-day .dd{font-size:10px;color:var(--dim);font-family:monospace;}
+.tl-photos{display:flex;flex-wrap:wrap;gap:8px;}
+.tl-photos img{width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
+.tl-photos img:hover{transform:scale(1.04);}
+
+.tl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px dashed #2c2c2e;}
+.tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
+.tl-actions input[type=file]{max-width:210px;font-size:10px;color:var(--muted);}
+.no-photos{font-size:11px;color:var(--dim);margin-bottom:10px;}
 
 .empty-state{text-align:center;color:var(--dim);font-size:12px;padding:40px 20px;}
-
 .footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;}
+
+/* slideshow overlay */
+#showOverlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10000;display:none;flex-direction:column;align-items:center;justify-content:center;}
+#showOverlay.on{display:flex;}
+#showImg{max-width:92vw;max-height:74vh;border-radius:10px;border:1px solid #333;}
+#showDay{font-size:26px;font-weight:800;color:var(--accent);margin-top:18px;}
+#showSub{font-size:12px;color:var(--muted);margin-top:4px;}
+#showClose{position:absolute;top:18px;right:22px;background:none;border:none;color:#888;font-size:26px;cursor:pointer;}
+#showClose:hover{color:#fff;}
 </style>
 </head>
 <body>
@@ -79,9 +113,9 @@ a{color:inherit;}
   <div class="header-text">
     <div class="header-eyebrow">FIXWATCH</div>
     <div class="header-title">PowerPatch Durability Tracker</div>
-    <div class="header-sub">Every pothole fixed with PowerPatch — exact location + days holding since the fix.</div>
+    <div class="header-sub">Every pothole fixed with PowerPatch — exact location, install date, photo timeline.</div>
   </div>
-  <button class="gear-btn" onclick="promptToken()" title="Set GitHub token">
+  <button class="gear-btn" onclick="promptToken()" title="One-time setup">
     ⚙️<span id="gearDot" class="gear-dot"></span>
   </button>
 </div>
@@ -102,20 +136,24 @@ a{color:inherit;}
 </div>
 
 <div id="view-log" class="view">
+  <div class="setup-banner" id="setupBanner">
+    First time here? Click <b onclick="promptToken()">one-time setup</b> to paste the PowerFix access code — takes 10 seconds, then this browser can save fixes.
+  </div>
+
   <div class="card">
     <div class="field">
-      <label>Search a place, or click the map / drag the pin</label>
-      <input id="fSearch" type="text" placeholder="e.g. Av. Balboa, Panama City" onkeydown="if(event.key==='Enter'){event.preventDefault();searchPlace();}"/>
-      <div class="field-hint">You can also paste exact coordinates here (e.g. 8.9917, -79.5297) and press Enter.</div>
+      <label>Address or place — or paste coordinates</label>
+      <input id="fSearch" type="text" placeholder="e.g. Calle 50 y Av. Federico Boyd, Panama City — or 8.9917, -79.5297" onkeydown="if(event.key==='Enter'){event.preventDefault();searchPlace();}"/>
+      <div class="field-hint">Press Enter to locate. You can also click the map or drag the pin to fine-tune the exact spot.</div>
     </div>
     <div id="pickMap"></div>
-    <div id="coordReadout" class="coord-readout unset">No location set yet — search, click the map, or drag the pin.</div>
+    <div id="coordReadout" class="coord-readout unset">No location set yet — type an address above, click the map, or drag the pin.</div>
   </div>
 
   <div class="card">
     <div class="field-row">
       <div class="field">
-        <label>Date fixed with PowerPatch</label>
+        <label>Installation date (PowerPatch)</label>
         <input id="fDate" type="date"/>
       </div>
       <div class="field">
@@ -124,8 +162,13 @@ a{color:inherit;}
       </div>
     </div>
     <div class="field">
+      <label>Photos from install day (optional)</label>
+      <input id="fPhotos" type="file" accept="image/*" multiple/>
+      <div class="field-hint">These become "Day 0" in the fix's photo timeline. You can add Day 2, Day 20… photos later from the Fixed Map tab.</div>
+    </div>
+    <div class="field">
       <label>Notes (optional)</label>
-      <textarea id="fNotes" placeholder="Crew, job #, anything worth remembering about this fix"></textarea>
+      <textarea id="fNotes" placeholder="Crew, job #, anything worth remembering about this install"></textarea>
     </div>
     <button class="btn" id="logBtn" onclick="logFix()">Log Fix</button>
     <div id="logMsg"></div>
@@ -134,33 +177,44 @@ a{color:inherit;}
 
 <div class="footer">POWERFIX · INTERNAL USE ONLY</div>
 
+<div id="showOverlay">
+  <button id="showClose" onclick="stopShow()">✕</button>
+  <img id="showImg" alt=""/>
+  <div id="showDay"></div>
+  <div id="showSub"></div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const REPO_OWNER = 'arlito331';
 const REPO_NAME  = 'fixwatch';
 const DATA_PATH  = 'data/fixes.json';
-const RAW_URL    = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${DATA_PATH}`;
-const API_URL    = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}`;
+const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/`;
+const RAW_URL    = RAW_BASE + DATA_PATH;
+const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/`;
 
 let fixes = [];
 let pickedLatLng = null;
 let pickMap, pickMarker, listMap;
 let listMarkers = [];
+let openFixId = null;
 
-// ---------- token ----------
+// ---------- access code (GitHub token under the hood) ----------
 function getGhToken(){ return localStorage.getItem('fw_gh_token'); }
 function setGhToken(t){ localStorage.setItem('fw_gh_token', t); }
 function promptToken(){
-  const t = prompt('Paste a GitHub personal access token with "repo" scope.\nStored only in this browser (localStorage), never sent anywhere except api.github.com.');
+  const t = prompt('One-time setup\n\nPaste the PowerFix access code here (ask Ariel for it).\nIt stays saved in this browser — you only do this once.');
   if (t) { setGhToken(t.trim()); updateGearDot(); }
 }
 function updateGearDot(){
-  document.getElementById('gearDot').className = 'gear-dot' + (getGhToken() ? ' ok' : '');
+  const has = !!getGhToken();
+  document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
+  document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
 }
 
 async function ghFetch(url, opts={}){
   const token = getGhToken();
-  const res = await fetch(url, {
+  return fetch(url, {
     ...opts,
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -170,7 +224,18 @@ async function ghFetch(url, opts={}){
       ...(opts.headers||{}),
     },
   });
-  return res;
+}
+
+async function ghPutFile(path, b64, message, sha){
+  const res = await ghFetch(API_BASE + path, {
+    method: 'PUT',
+    body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
+  });
+  if (!res.ok){
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `save failed (${res.status})`);
+  }
+  return res.json();
 }
 
 // ---------- tabs ----------
@@ -181,15 +246,62 @@ function switchTab(name){
   if (name === 'map') setTimeout(() => listMap.invalidateSize(), 50);
 }
 
-// ---------- days elapsed ----------
+// ---------- day math ----------
 function daysSince(dateStr){
   const fixDate = new Date(dateStr + 'T00:00:00Z');
-  const today = new Date();
-  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const t = new Date();
+  const todayUTC = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
   return Math.max(0, Math.round((todayUTC - fixDate) / 86400000));
 }
+function dayNumber(fix, dateStr){
+  const a = new Date(fix.fix_date + 'T00:00:00Z');
+  const b = new Date(dateStr + 'T00:00:00Z');
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
 
-// ---------- pick map (Log a Fix tab) ----------
+// ---------- image compression ----------
+function compressImage(file, maxW=1280, quality=0.82){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = c.toDataURL('image/jpeg', quality);
+      URL.revokeObjectURL(img.src);
+      resolve(dataUrl.split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error('could not read image')); };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function uploadPhotos(fix, dateStr, fileList, progressCb){
+  const added = [];
+  const files = Array.from(fileList);
+  for (let i = 0; i < files.length; i++){
+    progressCb && progressCb(`Uploading photo ${i+1}/${files.length}…`);
+    const b64 = await compressImage(files[i]);
+    const path = `photos/${fix.id}/${dateStr}_${Date.now().toString(36)}${i}.jpg`;
+    await ghPutFile(path, b64, `photo: ${fix.label || fix.id} day ${dayNumber(fix, dateStr)}`);
+    added.push({date: dateStr, path});
+  }
+  return added;
+}
+
+// ---------- fixes.json read-modify-write ----------
+async function commitFixes(message){
+  const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+  let sha = null;
+  if (getRes.ok){ sha = (await getRes.json()).sha; }
+  else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(fixes, null, 2))));
+  await ghPutFile(DATA_PATH, b64, message, sha);
+}
+
+// ---------- pick map ----------
 function initPickMap(){
   pickMap = L.map('pickMap', {zoomControl:true}).setView([9.0, -79.5], 6);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -210,7 +322,7 @@ function setPickedLocation(lat, lng, label){
   } else {
     pickMarker.setLatLng([lat, lng]);
   }
-  pickMap.setView([lat, lng], Math.max(pickMap.getZoom(), 14));
+  pickMap.setView([lat, lng], Math.max(pickMap.getZoom(), 15));
   if (label) document.getElementById('fLabel').value = document.getElementById('fLabel').value || label;
   renderCoordReadout();
 }
@@ -218,7 +330,7 @@ function setPickedLocation(lat, lng, label){
 function renderCoordReadout(){
   const el = document.getElementById('coordReadout');
   if (!pickedLatLng){
-    el.textContent = 'No location set yet — search, click the map, or drag the pin.';
+    el.textContent = 'No location set yet — type an address above, click the map, or drag the pin.';
     el.classList.add('unset');
   } else {
     el.textContent = `${pickedLatLng.lat.toFixed(6)}, ${pickedLatLng.lng.toFixed(6)}`;
@@ -237,23 +349,18 @@ function parseCoordString(str){
 async function searchPlace(){
   const query = document.getElementById('fSearch').value.trim();
   if (!query) return;
-
   const coords = parseCoordString(query);
-  if (coords){
-    setPickedLocation(coords.lat, coords.lng);
-    return;
-  }
-
+  if (coords){ setPickedLocation(coords.lat, coords.lng); return; }
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`);
     const results = await res.json();
     if (!results.length){
-      alert(`No results for "${query}" — try a different search, paste exact coordinates, or click the map directly.`);
+      alert(`No results for "${query}" — try adding the city/country, paste exact coordinates, or click the map directly.`);
       return;
     }
     setPickedLocation(parseFloat(results[0].lat), parseFloat(results[0].lon), results[0].display_name.split(',')[0]);
   } catch (e) {
-    alert('Search failed — try clicking the map directly instead.');
+    alert('Address lookup failed — click the map directly instead.');
   }
 }
 
@@ -264,16 +371,16 @@ async function logFix(){
   msg.className = ''; msg.textContent = '';
 
   if (!getGhToken()){
-    msg.className = 'err'; msg.textContent = 'Set a GitHub token first (gear icon, top right).';
+    msg.className = 'err'; msg.textContent = 'Run the one-time setup first (gear icon, top right).';
     return;
   }
   if (!pickedLatLng){
-    msg.className = 'err'; msg.textContent = 'Set a location first — search, click the map, or drag the pin.';
+    msg.className = 'err'; msg.textContent = 'Set a location first — type an address, click the map, or drag the pin.';
     return;
   }
   const dateVal = document.getElementById('fDate').value;
   if (!dateVal){
-    msg.className = 'err'; msg.textContent = 'Pick the date it was fixed.';
+    msg.className = 'err'; msg.textContent = 'Pick the installation date.';
     return;
   }
 
@@ -284,46 +391,39 @@ async function logFix(){
     label: document.getElementById('fLabel').value.trim(),
     fix_date: dateVal,
     notes: document.getElementById('fNotes').value.trim(),
+    photos: [],
     logged_at: new Date().toISOString(),
   };
 
   btn.disabled = true;
-  msg.textContent = 'Saving…';
   try {
-    const getRes = await ghFetch(`${API_URL}?ref=main`);
+    const photoInput = document.getElementById('fPhotos');
+    if (photoInput.files.length){
+      entry.photos = await uploadPhotos(entry, dateVal, photoInput.files, t => { msg.textContent = t; });
+    }
+    msg.textContent = 'Saving…';
+
+    const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
     let sha = null, current = [];
     if (getRes.ok){
       const data = await getRes.json();
       sha = data.sha;
       current = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g,'')))));
     } else if (getRes.status !== 404){
-      throw new Error(`GitHub read failed (${getRes.status})`);
+      throw new Error(`read failed (${getRes.status})`);
     }
-
     current.push(entry);
-    const newContentB64 = btoa(unescape(encodeURIComponent(JSON.stringify(current, null, 2))));
-
-    const putRes = await ghFetch(API_URL, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: `fix logged: ${entry.label || entry.lat + ',' + entry.lng} (${entry.fix_date})`,
-        content: newContentB64,
-        branch: 'main',
-        ...(sha ? {sha} : {}),
-      }),
-    });
-    if (!putRes.ok){
-      const err = await putRes.json().catch(() => ({}));
-      throw new Error(err.message || `GitHub write failed (${putRes.status})`);
-    }
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(current, null, 2))));
+    await ghPutFile(DATA_PATH, b64, `fix logged: ${entry.label || entry.lat + ',' + entry.lng} (${entry.fix_date})`, sha);
 
     fixes = current;
     renderMapAndList();
-    msg.className = 'ok'; msg.textContent = 'Fix logged.';
+    msg.className = 'ok'; msg.textContent = 'Fix logged.' + (entry.photos.length ? ` ${entry.photos.length} photo(s) attached as Day 0.` : '');
 
     document.getElementById('fSearch').value = '';
     document.getElementById('fLabel').value = '';
     document.getElementById('fNotes').value = '';
+    document.getElementById('fPhotos').value = '';
     pickedLatLng = null;
     if (pickMarker){ pickMap.removeLayer(pickMarker); pickMarker = null; }
     renderCoordReadout();
@@ -335,12 +435,143 @@ async function logFix(){
   }
 }
 
+// ---------- add update photos to an existing fix ----------
+async function addUpdate(fixId){
+  const fix = fixes.find(f => f.id === fixId);
+  if (!fix) return;
+  const dateEl = document.getElementById(`upDate-${fixId}`);
+  const fileEl = document.getElementById(`upFiles-${fixId}`);
+  const msgEl  = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = '';
+
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  if (!fileEl.files.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
+  const dateStr = dateEl.value;
+  if (!dateStr){ msgEl.className='row-msg err'; msgEl.textContent='Pick the photo date.'; return; }
+
+  try {
+    const added = await uploadPhotos(fix, dateStr, fileEl.files, t => { msgEl.textContent = t; });
+    fix.photos = (fix.photos || []).concat(added);
+    msgEl.textContent = 'Saving…';
+    await commitFixes(`photo update: ${fix.label || fix.id} day ${dayNumber(fix, dateStr)}`);
+    msgEl.className = 'row-msg ok'; msgEl.textContent = `Added ${added.length} photo(s) — Day ${dayNumber(fix, dateStr)}.`;
+    fileEl.value = '';
+    renderMapAndList();
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Upload failed.';
+  }
+}
+
+// ---------- timeline helpers ----------
+function photoGroups(fix){
+  const groups = {};
+  (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
+  return Object.keys(groups).sort().map(d => ({date: d, day: dayNumber(fix, d), photos: groups[d]}));
+}
+
+// ---------- slideshow ----------
+let showTimer = null;
+function playShow(fixId){
+  const fix = fixes.find(f => f.id === fixId);
+  const groups = photoGroups(fix);
+  const frames = [];
+  groups.forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
+  if (!frames.length) return;
+  const ov = document.getElementById('showOverlay');
+  ov.classList.add('on');
+  let i = 0;
+  const step = () => {
+    const f = frames[i % frames.length];
+    document.getElementById('showImg').src = f.url;
+    document.getElementById('showDay').textContent = `Day ${f.day}`;
+    document.getElementById('showSub').textContent = `${fix.label || 'Fixed pothole'} · ${f.date}`;
+    i++;
+    showTimer = setTimeout(step, 1600);
+  };
+  step();
+}
+function stopShow(){
+  clearTimeout(showTimer); showTimer = null;
+  document.getElementById('showOverlay').classList.remove('on');
+}
+
+// ---------- video export (client-side WebM/MP4) ----------
+async function exportVideo(fixId, btn){
+  const fix = fixes.find(f => f.id === fixId);
+  const groups = photoGroups(fix);
+  const frames = [];
+  groups.forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
+  if (!frames.length) return;
+
+  btn.disabled = true; const orig = btn.textContent;
+  try {
+    btn.textContent = 'Loading photos…';
+    const imgs = await Promise.all(frames.map(f => new Promise((res, rej) => {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = () => res(im); im.onerror = () => rej(new Error('photo failed to load'));
+      im.src = f.url;
+    })));
+
+    const W = 1280, H = 720, FRAME_MS = 1600;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    const stream = c.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
+               : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 5_000_000});
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    const done = new Promise(res => { rec.onstop = res; });
+    rec.start();
+
+    btn.textContent = 'Rendering…';
+    for (let i = 0; i < imgs.length; i++){
+      const im = imgs[i], f = frames[i];
+      ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
+      const s = Math.min(W / im.width, H / im.height);
+      const w = im.width * s, h = im.height * s;
+      ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+      ctx.fillStyle = 'rgba(13,13,13,.72)'; ctx.fillRect(0, H - 84, W, 84);
+      ctx.fillStyle = '#46C97E'; ctx.font = '700 40px -apple-system, Helvetica';
+      ctx.fillText(`Day ${f.day}`, 40, H - 32);
+      ctx.fillStyle = '#bbb'; ctx.font = '400 22px -apple-system, Helvetica';
+      ctx.fillText(`${fix.label || 'Fixed with PowerPatch'} · ${f.date}`, 190, H - 32);
+      await new Promise(r => setTimeout(r, FRAME_MS));
+    }
+    rec.stop();
+    await done;
+
+    const blob = new Blob(chunks, {type: mime.split(';')[0]});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
+    a.download = `FixWatch_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    btn.textContent = 'Downloaded ✓';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch (e) {
+    alert('Video export failed: ' + (e.message || e));
+    btn.textContent = orig; btn.disabled = false;
+  }
+}
+
 // ---------- fixed map / list ----------
 function initListMap(){
   listMap = L.map('listMap', {zoomControl:true}).setView([9.0, -79.5], 5);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
   }).addTo(listMap);
+}
+
+function esc(s){
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function toggleFix(fixId){
+  openFixId = (openFixId === fixId) ? null : fixId;
+  renderMapAndList();
 }
 
 function renderMapAndList(){
@@ -363,33 +594,58 @@ function renderMapAndList(){
 
   listEl.innerHTML = '';
   const bounds = [];
+  const today = new Date().toISOString().slice(0,10);
+
   sorted.forEach(f => {
     const d = daysSince(f.fix_date);
     const marker = L.marker([f.lat, f.lng]).addTo(listMap);
-    marker.bindPopup(`<b>${escapeHtml(f.label || 'Fixed pothole')}</b><br>Day ${d} · fixed ${f.fix_date}${f.notes ? '<br>' + escapeHtml(f.notes) : ''}`);
+    marker.bindPopup(`<b>${esc(f.label || 'Fixed pothole')}</b><br>Day ${d} · installed ${f.fix_date}`);
     listMarkers.push(marker);
     bounds.push([f.lat, f.lng]);
 
+    const groups = photoGroups(f);
+    const nPhotos = (f.photos || []).length;
+    const isOpen = openFixId === f.id;
+
     const row = document.createElement('div');
-    row.className = 'fix-row';
+    row.className = 'fix-row' + (isOpen ? ' open' : '');
+
+    const timeline = groups.length
+      ? groups.map(g => `
+          <div class="tl-group">
+            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span></div>
+            <div class="tl-photos">${g.photos.map(p => `<img loading="lazy" src="${RAW_BASE + p.path}" onclick="event.stopPropagation()" alt="Day ${g.day}"/>`).join('')}</div>
+          </div>`).join('')
+      : '<div class="no-photos">No photos yet — add the first ones below.</div>';
+
     row.innerHTML = `
-      <div class="fix-badge"><div class="d">${d}</div><div class="l">days</div></div>
-      <div class="fix-info">
-        <div class="fix-label">${escapeHtml(f.label || 'Fixed pothole')}</div>
-        <div class="fix-meta">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)} · fixed ${f.fix_date}</div>
-        ${f.notes ? `<div class="fix-notes">${escapeHtml(f.notes)}</div>` : ''}
+      <div class="fix-head" onclick="toggleFix('${f.id}')">
+        <div class="fix-badge"><div class="d">${d}</div><div class="l">days</div></div>
+        <div class="fix-info">
+          <div class="fix-label">${esc(f.label || 'Fixed pothole')}</div>
+          <div class="fix-meta">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)} · installed ${f.fix_date}</div>
+          ${f.notes ? `<div class="fix-notes">${esc(f.notes)}</div>` : ''}
+        </div>
+        <div class="fix-photocount">${nPhotos ? nPhotos + ' 📷' : ''}</div>
+        <div class="fix-chev">▶</div>
+      </div>
+      <div class="fix-detail">
+        ${timeline}
+        <div class="tl-actions">
+          <input type="date" id="upDate-${f.id}" value="${today}" onclick="event.stopPropagation()"/>
+          <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()"/>
+          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">Add photos</button>
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
+          <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
+        </div>
+        <div class="row-msg" id="upMsg-${f.id}"></div>
       </div>
     `;
-    row.style.cursor = 'pointer';
-    row.onclick = () => { listMap.setView([f.lat, f.lng], 15); marker.openPopup(); };
     listEl.appendChild(row);
   });
   if (bounds.length > 1) listMap.fitBounds(bounds, {padding:[30,30]});
   else if (bounds.length === 1) listMap.setView(bounds[0], 14);
-}
-
-function escapeHtml(s){
-  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ---------- boot ----------
@@ -400,6 +656,7 @@ async function loadFixes(){
   } catch (e) {
     fixes = [];
   }
+  fixes.forEach(f => { if (!f.photos) f.photos = []; });
   renderMapAndList();
 }
 
