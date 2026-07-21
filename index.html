@@ -730,12 +730,35 @@ async function exportVideo(fixId, btn){
       im.src = f.url;
     })));
 
-    // Teaser is always 30 seconds or less: intro card + photos + outro card.
-    const W = 1280, H = 720, MAX_MS = 30000, CARD_MS = 1800;
-    const FRAME_MS = Math.max(200, Math.min(1600, Math.floor((MAX_MS - CARD_MS * 2) / imgs.length)));
+    // Brand logo + optional soundtrack (drop assets/teaser_music.mp3 in the repo to enable music)
+    btn.textContent = 'Loading assets…';
+    const logo = await new Promise(res => {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => res(im); im.onerror = () => res(null);
+      im.src = RAW_BASE + 'assets/powerfix_logo.png';
+    });
+    let audioCtx = null, audioDest = null, audioSrc = null;
+    try {
+      const ar = await fetch(RAW_BASE + 'assets/teaser_music.mp3');
+      if (ar.ok){
+        const buf = await ar.arrayBuffer();
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuf = await audioCtx.decodeAudioData(buf);
+        audioDest = audioCtx.createMediaStreamDestination();
+        audioSrc = audioCtx.createBufferSource();
+        audioSrc.buffer = audioBuf; audioSrc.loop = true;
+        const gain = audioCtx.createGain(); gain.gain.value = 0.9;
+        audioSrc.connect(gain); gain.connect(audioDest);
+      }
+    } catch (e){ audioDest = null; }
+
+    // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
+    const W = 1280, H = 720, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800;
+    const FRAME_MS = Math.max(200, Math.min(1600, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const stream = c.captureStream(30);
+    if (audioDest) audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
     const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
                : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
     const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 5_000_000});
@@ -743,9 +766,9 @@ async function exportVideo(fixId, btn){
     rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     const done = new Promise(res => { rec.onstop = res; });
     rec.start();
+    if (audioSrc) audioSrc.start();
 
     const tag = fixTag(fix);
-    const holdingDays = daysSince(fix.fix_date);
     const card = (lines) => {
       ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
       let y = H / 2 - (lines.length - 1) * 34;
@@ -756,15 +779,27 @@ async function exportVideo(fixId, btn){
       }
       ctx.textAlign = 'left';
     };
+    const logoCard = () => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      if (logo){
+        const lw = W * 0.55, lh = lw * logo.height / logo.width;
+        ctx.drawImage(logo, (W - lw) / 2, (H - lh) / 2, lw, lh);
+      } else {
+        card([['PowerFix', '#E8442A', '700 64px -apple-system, Helvetica']]);
+      }
+    };
 
     btn.textContent = 'Rendering…';
-    // intro card
+    // 1) logo
+    logoCard();
+    await new Promise(r => setTimeout(r, LOGO_MS));
+    // 2) country + location
     card([
-      ['F I X W A T C H', '#46C97E', '700 22px -apple-system, Helvetica'],
-      [`${tag} · ${fix.label || 'Fixed pothole'}`, '#fff', '700 46px -apple-system, Helvetica'],
-      [`Installed with PowerPatch · ${fix.fix_date}`, '#999', '400 24px -apple-system, Helvetica'],
+      [(fix.country || 'Panama').toUpperCase(), '#46C97E', '700 26px -apple-system, Helvetica'],
+      [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Fixed pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
+      [`${tag} · Installed with PowerPatch · ${fix.fix_date}`, '#999', '400 24px -apple-system, Helvetica'],
     ]);
-    await new Promise(r => setTimeout(r, CARD_MS));
+    await new Promise(r => setTimeout(r, LOC_MS));
 
     // photo frames — big Day N + the photo's date to confirm progress
     for (let i = 0; i < imgs.length; i++){
@@ -785,16 +820,14 @@ async function exportVideo(fixId, btn){
       await new Promise(r => setTimeout(r, FRAME_MS));
     }
 
-    // outro card
-    card([
-      [`Day ${holdingDays} — still holding.`, '#46C97E', '700 52px -apple-system, Helvetica'],
-      [`${tag} · ${fix.label || 'Fixed pothole'}`, '#fff', '600 28px -apple-system, Helvetica'],
-      ['PowerFix · PowerPatch', '#666', '400 20px -apple-system, Helvetica'],
-    ]);
-    await new Promise(r => setTimeout(r, CARD_MS));
+    // 3) close with the logo again
+    logoCard();
+    await new Promise(r => setTimeout(r, LOGO_MS));
 
     rec.stop();
     await done;
+    if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
+    if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
 
     const blob = new Blob(chunks, {type: mime.split(';')[0]});
     const a = document.createElement('a');
