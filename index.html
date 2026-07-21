@@ -105,6 +105,17 @@ a{color:inherit;}
 .empty-state{text-align:center;color:var(--dim);font-size:12px;padding:40px 20px;}
 
 .num-pin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#04170c;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #0D0D0D;box-shadow:0 2px 8px rgba(0,0,0,.55);}
+
+.filter-row{display:flex;gap:10px;margin-bottom:14px;}
+.filter-row select{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 12px;font-size:12px;outline:none;}
+.filter-row select:focus{border-color:var(--accent);}
+
+.fix-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
+.day-chip{background:#0a0a0a;border:1px solid var(--border);color:var(--accent);font-weight:800;font-size:12px;border-radius:6px;padding:5px 10px;white-space:nowrap;}
+
+.ph-item{display:flex;flex-direction:column;gap:4px;align-items:center;}
+.ph-date{background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 5px;font-size:10px;outline:none;width:110px;}
+.ph-date.dirty{border-color:var(--orange);color:var(--orange);}
 .footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;}
 
 /* slideshow overlay */
@@ -136,6 +147,10 @@ a{color:inherit;}
 </div>
 
 <div id="view-map" class="view active">
+  <div class="filter-row">
+    <select id="fltCountry" onchange="document.getElementById('fltCity').value='';renderMapAndList()"></select>
+    <select id="fltCity" onchange="renderMapAndList()"></select>
+  </div>
   <div class="summary-row">
     <div class="summary-tile"><div class="n" id="sumCount">—</div><div class="l">Fixes logged</div></div>
     <div class="summary-tile"><div class="n" id="sumOldest">—</div><div class="l">Longest holding (days)</div></div>
@@ -161,6 +176,22 @@ a{color:inherit;}
   </div>
 
   <div class="card">
+    <div class="field-row">
+      <div class="field">
+        <label>Country</label>
+        <input id="fCountry" type="text" list="countryList" placeholder="Panama"/>
+        <datalist id="countryList">
+          <option>Panama</option><option>Guatemala</option><option>Honduras</option>
+          <option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option>
+          <option>Colombia</option><option>República Dominicana</option><option>México</option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label>City</label>
+        <input id="fCity" type="text" placeholder="Panama City"/>
+      </div>
+    </div>
+    <div class="field-hint" style="margin:-8px 0 16px;">Country and city fill in automatically when you set the pin — correct them if needed.</div>
     <div class="field-row">
       <div class="field">
         <label>Installation date (PowerPatch)</label>
@@ -432,6 +463,20 @@ function setPickedLocation(lat, lng, label){
   pickMap.setView([lat, lng], Math.max(pickMap.getZoom(), 15));
   if (label) document.getElementById('fLabel').value = document.getElementById('fLabel').value || label;
   renderCoordReadout();
+  reverseFill(lat, lng);
+}
+
+// Auto-fill country/city from the pin position (never overwrites what you typed).
+async function reverseFill(lat, lng){
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&accept-language=es`);
+    const a = (await r.json()).address || {};
+    const country = a.country || '';
+    const city = a.city || a.town || a.village || a.municipality || a.state || '';
+    const cEl = document.getElementById('fCountry'), ciEl = document.getElementById('fCity');
+    if (country && !cEl.value.trim()) cEl.value = country;
+    if (city && !ciEl.value.trim()) ciEl.value = city;
+  } catch (e) { /* offline geocoder is never blocking */ }
 }
 
 function renderCoordReadout(){
@@ -496,6 +541,8 @@ async function logFix(){
     lat: pickedLatLng.lat,
     lng: pickedLatLng.lng,
     label: document.getElementById('fLabel').value.trim(),
+    country: document.getElementById('fCountry').value.trim(),
+    city: document.getElementById('fCity').value.trim(),
     fix_date: dateVal,
     notes: document.getElementById('fNotes').value.trim(),
     photos: [],
@@ -531,6 +578,8 @@ async function logFix(){
 
     document.getElementById('fSearch').value = '';
     document.getElementById('fLabel').value = '';
+    document.getElementById('fCountry').value = '';
+    document.getElementById('fCity').value = '';
     document.getElementById('fNotes').value = '';
     document.getElementById('fPhotos').value = '';
     pickedLatLng = null;
@@ -592,6 +641,49 @@ function photoGroups(fix){
   const groups = {};
   (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
   return Object.keys(groups).sort().map(d => ({date: d, day: dayNumber(fix, d), photos: groups[d]}));
+}
+
+// ---------- per-photo date editing on already-uploaded photos ----------
+function photoDateChanged(el){
+  const fix = fixes.find(f => f.id === el.dataset.fix);
+  const p = fix && fix.photos.find(x => x.path === el.dataset.path);
+  if (!p) return;
+  p.date = el.value;
+  el.classList.add('dirty');
+  const saveBtn = document.getElementById(`saveDates-${fix.id}`);
+  if (saveBtn) saveBtn.style.display = 'inline-block';
+}
+
+async function saveDates(fixId){
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving date changes…';
+  try {
+    await commitFixes(`re-date photos: ${fix.label || fix.id}`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = 'Dates saved.'; }
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+// ---------- country / city filters ----------
+function populateFilters(){
+  const cSel = document.getElementById('fltCountry'), citySel = document.getElementById('fltCity');
+  const countries = [...new Set(fixes.map(f => f.country || 'Unspecified'))].sort();
+  const curC = cSel.value;
+  cSel.innerHTML = '<option value="">All countries</option>' + countries.map(c => `<option${c===curC?' selected':''}>${esc(c)}</option>`).join('');
+  const inC = fixes.filter(f => !cSel.value || (f.country || 'Unspecified') === cSel.value);
+  const cities = [...new Set(inC.map(f => f.city || 'Unspecified'))].sort();
+  const curCity = citySel.value;
+  citySel.innerHTML = '<option value="">All cities</option>' + cities.map(c => `<option${c===curCity?' selected':''}>${esc(c)}</option>`).join('');
+}
+
+function filteredFixes(){
+  const c = document.getElementById('fltCountry').value, ci = document.getElementById('fltCity').value;
+  return fixes.filter(f => (!c || (f.country || 'Unspecified') === c) && (!ci || (f.city || 'Unspecified') === ci));
 }
 
 // ---------- slideshow ----------
@@ -740,12 +832,14 @@ function renderMapAndList(){
   listMarkers.forEach(m => listMap.removeLayer(m));
   listMarkers = [];
 
-  const sorted = [...fixes].sort((a,b) => daysSince(b.fix_date) - daysSince(a.fix_date));
+  populateFilters();
+  const shown = filteredFixes();
+  const sorted = [...shown].sort((a,b) => daysSince(b.fix_date) - daysSince(a.fix_date));
 
-  document.getElementById('sumCount').textContent = fixes.length;
+  document.getElementById('sumCount').textContent = shown.length;
   document.getElementById('sumOldest').textContent = sorted.length ? daysSince(sorted[0].fix_date) : '—';
-  document.getElementById('sumRecent').textContent = fixes.length
-    ? new Date([...fixes].sort((a,b) => new Date(b.fix_date) - new Date(a.fix_date))[0].fix_date + 'T00:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})
+  document.getElementById('sumRecent').textContent = shown.length
+    ? new Date([...shown].sort((a,b) => new Date(b.fix_date) - new Date(a.fix_date))[0].fix_date + 'T00:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})
     : '—';
 
   const listEl = document.getElementById('fixList');
@@ -778,20 +872,29 @@ function renderMapAndList(){
     const timeline = groups.length
       ? groups.map(g => `
           <div class="tl-group">
-            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span><button class="tl-edit" title="Correct this date" onclick="event.stopPropagation();editGroupDate('${f.id}','${g.date}')">✎</button></div>
-            <div class="tl-photos">${g.photos.map(p => `<img loading="lazy" src="${RAW_BASE + p.path}" onclick="event.stopPropagation()" alt="Day ${g.day}"/>`).join('')}</div>
+            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span><button class="tl-edit" title="Correct the date of this whole group" onclick="event.stopPropagation();editGroupDate('${f.id}','${g.date}')">✎</button></div>
+            <div class="tl-photos">${g.photos.map(p => `
+              <div class="ph-item">
+                <img loading="lazy" src="${RAW_BASE + p.path}" onclick="event.stopPropagation()" alt="Day ${g.day}"/>
+                <input type="date" class="ph-date" value="${p.date}" data-fix="${f.id}" data-path="${esc(p.path)}" onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+              </div>`).join('')}</div>
           </div>`).join('')
       : '<div class="no-photos">No photos yet — add the first ones below.</div>';
 
+    const place = [f.city, f.country].filter(Boolean).join(', ');
+
     row.innerHTML = `
       <div class="fix-head" onclick="toggleFix('${f.id}')">
-        <div class="fix-badge"><div class="d">${d}</div><div class="l">days</div></div>
+        <div class="fix-badge"><div class="d">#${fixNum(f)}</div><div class="l">pothole</div></div>
         <div class="fix-info">
-          <div class="fix-label"><span style="color:var(--accent);font-family:monospace;font-size:11px;font-weight:700;margin-right:7px;">${fixTag(f)}</span>${esc(f.label || 'Fixed pothole')}</div>
-          <div class="fix-meta">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)} · installed ${f.fix_date}</div>
+          <div class="fix-label">${esc(f.label || 'Fixed pothole')}</div>
+          <div class="fix-meta">${place ? esc(place) + ' · ' : ''}installed ${f.fix_date}</div>
           ${f.notes ? `<div class="fix-notes">${esc(f.notes)}</div>` : ''}
         </div>
-        <div class="fix-photocount">${nPhotos ? nPhotos + ' 📷' : ''}</div>
+        <div class="fix-side">
+          <div class="day-chip">Day ${d}</div>
+          <div class="fix-photocount">${nPhotos ? nPhotos + ' 📷' : ''}</div>
+        </div>
         <div class="fix-chev">▶</div>
       </div>
       <div class="fix-detail">
@@ -799,6 +902,7 @@ function renderMapAndList(){
         <div class="tl-actions">
           <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">Add photos</button>
+          <button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
           <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
@@ -814,13 +918,26 @@ function renderMapAndList(){
 }
 
 // ---------- boot ----------
+// Load via the GitHub API when a token is set (always fresh — the raw CDN can
+// serve a minutes-old copy, which made saved date edits look like they reverted).
 async function loadFixes(){
-  try {
-    const res = await fetch(`${RAW_URL}?t=${Date.now()}`);
-    fixes = res.ok ? await res.json() : [];
-  } catch (e) {
-    fixes = [];
+  let loaded = null;
+  if (getGhToken()){
+    try {
+      const r = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+      if (r.ok){
+        const d = await r.json();
+        loaded = JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));
+      }
+    } catch (e) { /* fall through to raw */ }
   }
+  if (!loaded){
+    try {
+      const res = await fetch(`${RAW_URL}?t=${Date.now()}`);
+      loaded = res.ok ? await res.json() : [];
+    } catch (e) { loaded = []; }
+  }
+  fixes = loaded;
   fixes.forEach(f => { if (!f.photos) f.photos = []; });
   renderMapAndList();
 }
