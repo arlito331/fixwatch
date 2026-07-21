@@ -85,6 +85,8 @@ a{color:inherit;}
 .tl-day{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;}
 .tl-day .dn{font-size:13px;font-weight:800;color:var(--accent);}
 .tl-day .dd{font-size:10px;color:var(--dim);font-family:monospace;}
+.tl-edit{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;padding:0 2px;}
+.tl-edit:hover{color:var(--accent);}
 .tl-photos{display:flex;flex-wrap:wrap;gap:8px;}
 .tl-photos img{width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
 .tl-photos img:hover{transform:scale(1.04);}
@@ -93,6 +95,12 @@ a{color:inherit;}
 .tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
 .tl-actions input[type=file]{max-width:210px;font-size:10px;color:var(--muted);}
 .no-photos{font-size:11px;color:var(--dim);margin-bottom:10px;}
+
+.stage-hint{font-size:10px;color:var(--dim);margin-top:10px;}
+.stage-row{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-top:8px;flex-wrap:wrap;}
+.stage-row input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 8px;font-size:11px;outline:none;}
+.sr-name{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sr-day{color:var(--accent);font-weight:700;}
 
 .empty-state{text-align:center;color:var(--dim);font-size:12px;padding:40px 20px;}
 .footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;}
@@ -286,17 +294,106 @@ function compressImage(file, maxW=1280, quality=0.82){
   });
 }
 
-async function uploadPhotos(fix, dateStr, fileList, progressCb){
+async function uploadPhotoItems(fix, items, progressCb){
   const added = [];
-  const files = Array.from(fileList);
-  for (let i = 0; i < files.length; i++){
-    progressCb && progressCb(`Uploading photo ${i+1}/${files.length}…`);
-    const b64 = await compressImage(files[i]);
-    const path = `photos/${fix.id}/${dateStr}_${Date.now().toString(36)}${i}.jpg`;
-    await ghPutFile(path, b64, `photo: ${fix.label || fix.id} day ${dayNumber(fix, dateStr)}`);
-    added.push({date: dateStr, path});
+  for (let i = 0; i < items.length; i++){
+    const {file, date} = items[i];
+    progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+    const b64 = await compressImage(file);
+    const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
+    await ghPutFile(path, b64, `photo: ${fix.label || fix.id} day ${dayNumber(fix, date)}`);
+    added.push({date, path});
   }
   return added;
+}
+
+// ---------- photo date detection (EXIF, then file date, then today) ----------
+function readExifDate(file){
+  return new Promise(resolve => {
+    const fr = new FileReader();
+    fr.onerror = () => resolve(null);
+    fr.onload = () => {
+      try {
+        const v = new DataView(fr.result);
+        if (v.getUint16(0) !== 0xFFD8) return resolve(null);
+        let o = 2;
+        while (o + 4 <= v.byteLength){
+          const marker = v.getUint16(o);
+          const size = v.getUint16(o + 2);
+          if (marker === 0xFFE1 && o + 8 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
+            const t = o + 10;
+            const little = v.getUint16(t) === 0x4949;
+            const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
+            const readAscii = entry => {
+              const n = g32(entry + 4);
+              const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
+              let s = '';
+              for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
+              return s;
+            };
+            const scanIFD = (ifd, want) => {
+              const cnt = g16(ifd);
+              for (let e = 0; e < cnt; e++){
+                const entry = ifd + 2 + e * 12;
+                if (g16(entry) === want) return entry;
+              }
+              return null;
+            };
+            const ifd0 = t + g32(t + 4);
+            let dateStr = null;
+            const exifPtr = scanIFD(ifd0, 0x8769);
+            if (exifPtr){
+              const dto = scanIFD(t + g32(exifPtr + 8), 0x9003);
+              if (dto) dateStr = readAscii(dto);
+            }
+            if (!dateStr){
+              const dt = scanIFD(ifd0, 0x0132);
+              if (dt) dateStr = readAscii(dt);
+            }
+            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})/);
+            return resolve(m ? `${m[1]}-${m[2]}-${m[3]}` : null);
+          }
+          if ((marker & 0xFF00) !== 0xFF00) break;
+          o += 2 + size;
+        }
+        resolve(null);
+      } catch (e){ resolve(null); }
+    };
+    fr.readAsArrayBuffer(file.slice(0, 256 * 1024));
+  });
+}
+
+async function bestPhotoDate(file){
+  const exif = await readExifDate(file);
+  if (exif) return exif;
+  if (file.lastModified){
+    const d = new Date(file.lastModified);
+    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ---------- staged update photos (one date per photo) ----------
+const staged = {};
+async function stageFiles(fixId){
+  const input = document.getElementById(`upFiles-${fixId}`);
+  const listEl = document.getElementById(`upList-${fixId}`);
+  const fix = fixes.find(x => x.id === fixId);
+  const files = Array.from(input.files);
+  staged[fixId] = [];
+  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
+  for (const f of files){
+    const date = await bestPhotoDate(f);
+    const i = staged[fixId].length;
+    staged[fixId].push({file: f, date});
+    const row = document.createElement('div');
+    row.className = 'stage-row';
+    row.innerHTML = `<span class="sr-name">📷 ${esc(f.name)}</span>
+      <input type="date" value="${date}" onclick="event.stopPropagation()"
+        onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
+      <span class="sr-day">Day ${dayNumber(fix, date)}</span>`;
+    listEl.appendChild(row);
+  }
 }
 
 // ---------- fixes.json read-modify-write ----------
@@ -407,7 +504,8 @@ async function logFix(){
   try {
     const photoInput = document.getElementById('fPhotos');
     if (photoInput.files.length){
-      entry.photos = await uploadPhotos(entry, dateVal, photoInput.files, t => { msg.textContent = t; });
+      const items = Array.from(photoInput.files).map(f => ({file: f, date: dateVal}));
+      entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
     }
     msg.textContent = 'Saving…';
 
@@ -448,30 +546,46 @@ async function logFix(){
 async function addUpdate(fixId){
   const fix = fixes.find(f => f.id === fixId);
   if (!fix) return;
-  const dateEl = document.getElementById(`upDate-${fixId}`);
-  const fileEl = document.getElementById(`upFiles-${fixId}`);
-  const msgEl  = document.getElementById(`upMsg-${fixId}`);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
   msgEl.className = 'row-msg'; msgEl.textContent = '';
 
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
-  if (!fileEl.files.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
-  const dateStr = dateEl.value;
-  if (!dateStr){ msgEl.className='row-msg err'; msgEl.textContent='Pick the photo date.'; return; }
+  const items = staged[fixId] || [];
+  if (!items.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
+  if (items.some(it => !it.date)){ msgEl.className='row-msg err'; msgEl.textContent='Every photo needs a date.'; return; }
 
   try {
-    const added = await uploadPhotos(fix, dateStr, fileEl.files, t => { msgEl.textContent = t; });
+    const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
     fix.photos = (fix.photos || []).concat(added);
     msgEl.textContent = 'Saving…';
-    await commitFixes(`photo update: ${fix.label || fix.id} day ${dayNumber(fix, dateStr)}`);
-    msgEl.className = 'row-msg ok'; msgEl.textContent = `Added ${added.length} photo(s) — Day ${dayNumber(fix, dateStr)}.`;
-    fileEl.value = '';
+    await commitFixes(`photo update: ${fix.label || fix.id} (+${added.length})`);
+    staged[fixId] = [];
     renderMapAndList();
+    const days = [...new Set(added.map(p => dayNumber(fix, p.date)))].sort((a,b) => a-b);
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = `Added ${added.length} photo(s) — Day ${days.join(', Day ')}.`; }
   } catch (e) {
     msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Upload failed.';
   }
 }
 
 // ---------- timeline helpers ----------
+async function editGroupDate(fixId, oldDate){
+  const fix = fixes.find(f => f.id === fixId);
+  if (!fix) return;
+  if (!getGhToken()){ alert('Run the one-time setup first (gear icon).'); return; }
+  const nd = prompt(`These photos are currently dated ${oldDate} (Day ${dayNumber(fix, oldDate)}).\nEnter the correct date (YYYY-MM-DD):`, oldDate);
+  if (!nd || nd === oldDate) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nd)){ alert('Date must be YYYY-MM-DD.'); return; }
+  fix.photos.forEach(p => { if (p.date === oldDate) p.date = nd; });
+  try {
+    await commitFixes(`re-date photos: ${fix.label || fix.id} ${oldDate} -> ${nd}`);
+    renderMapAndList();
+  } catch (e) {
+    alert('Could not save: ' + (e.message || e));
+  }
+}
+
 function photoGroups(fix){
   const groups = {};
   (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
@@ -629,7 +743,7 @@ function renderMapAndList(){
   document.getElementById('sumCount').textContent = fixes.length;
   document.getElementById('sumOldest').textContent = sorted.length ? daysSince(sorted[0].fix_date) : '—';
   document.getElementById('sumRecent').textContent = fixes.length
-    ? new Date([...fixes].sort((a,b) => new Date(b.fix_date) - new Date(a.fix_date))[0].fix_date + 'T00:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric'})
+    ? new Date([...fixes].sort((a,b) => new Date(b.fix_date) - new Date(a.fix_date))[0].fix_date + 'T00:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})
     : '—';
 
   const listEl = document.getElementById('fixList');
@@ -640,7 +754,6 @@ function renderMapAndList(){
 
   listEl.innerHTML = '';
   const bounds = [];
-  const today = new Date().toISOString().slice(0,10);
 
   sorted.forEach(f => {
     const d = daysSince(f.fix_date);
@@ -659,7 +772,7 @@ function renderMapAndList(){
     const timeline = groups.length
       ? groups.map(g => `
           <div class="tl-group">
-            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span></div>
+            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span><button class="tl-edit" title="Correct this date" onclick="event.stopPropagation();editGroupDate('${f.id}','${g.date}')">✎</button></div>
             <div class="tl-photos">${g.photos.map(p => `<img loading="lazy" src="${RAW_BASE + p.path}" onclick="event.stopPropagation()" alt="Day ${g.day}"/>`).join('')}</div>
           </div>`).join('')
       : '<div class="no-photos">No photos yet — add the first ones below.</div>';
@@ -678,13 +791,13 @@ function renderMapAndList(){
       <div class="fix-detail">
         ${timeline}
         <div class="tl-actions">
-          <input type="date" id="upDate-${f.id}" value="${today}" onclick="event.stopPropagation()"/>
-          <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()"/>
+          <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">Add photos</button>
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
           <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
         </div>
+        <div id="upList-${f.id}"></div>
         <div class="row-msg" id="upMsg-${f.id}"></div>
       </div>
     `;
