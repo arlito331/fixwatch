@@ -103,6 +103,8 @@ a{color:inherit;}
 .sr-day{color:var(--accent);font-weight:700;}
 
 .empty-state{text-align:center;color:var(--dim);font-size:12px;padding:40px 20px;}
+
+.num-pin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#04170c;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #0D0D0D;box-shadow:0 2px 8px rgba(0,0,0,.55);}
 .footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;}
 
 /* slideshow overlay */
@@ -757,7 +759,11 @@ function renderMapAndList(){
 
   sorted.forEach(f => {
     const d = daysSince(f.fix_date);
-    const marker = L.marker([f.lat, f.lng]).addTo(listMap);
+    const marker = L.marker([f.lat, f.lng], {icon: L.divIcon({
+      className: '',
+      html: `<div class="num-pin">${fixNum(f)}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13],
+    })}).addTo(listMap);
     marker.bindPopup(`<b>${fixTag(f)} · ${esc(f.label || 'Fixed pothole')}</b><br>Day ${d} · installed ${f.fix_date}`);
     listMarkers.push(marker);
     bounds.push([f.lat, f.lng]);
