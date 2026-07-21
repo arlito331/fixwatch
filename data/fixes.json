@@ -7,5 +7,29 @@
     "fix_date": "2026-05-01",
     "notes": "JK, AF, Honduras Crew",
     "logged_at": "2026-07-21T17:34:28.536Z"
+  },
+  {
+    "id": "test-fix-002",
+    "num": 2,
+    "lat": 8.97,
+    "lng": -79.53,
+    "label": "Teaser test",
+    "fix_date": "2026-06-21",
+    "notes": "verification entry - will be removed",
+    "photos": [
+      {
+        "date": "2026-06-21",
+        "path": "photos/test-fix-002/2026-06-21_a.jpg"
+      },
+      {
+        "date": "2026-07-01",
+        "path": "photos/test-fix-002/2026-07-01_b.jpg"
+      },
+      {
+        "date": "2026-07-19",
+        "path": "photos/test-fix-002/2026-07-19_c.jpg"
+      }
+    ],
+    "logged_at": "2026-07-21T23:00:00Z"
   }
 ]
