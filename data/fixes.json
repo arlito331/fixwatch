@@ -1,5 +1,31 @@
 [
   {
+    "id": "1784674078807-bulk4",
+    "lat": 8.980333,
+    "lng": -79.523972,
+    "label": "Elviria Mendez",
+    "country": "Panama",
+    "city": "Panama City",
+    "fix_date": "2025-12-11",
+    "notes": "Crew: JK",
+    "photos": [],
+    "logged_at": "2026-07-21T00:00:00Z",
+    "num": 1
+  },
+  {
+    "id": "1784674078803-bulk0",
+    "lat": 8.931056,
+    "lng": -79.686056,
+    "label": "Arraijan",
+    "country": "Panama",
+    "city": "Arraiján",
+    "fix_date": "2026-04-21",
+    "notes": "Crew: AA, JK, N · MOP - Rodolfo y Ingeniera",
+    "photos": [],
+    "logged_at": "2026-07-21T00:00:00Z",
+    "num": 2
+  },
+  {
     "id": "1784655268534-j0a3c4",
     "lat": 8.986948178058068,
     "lng": -79.51965987682344,
@@ -45,8 +71,47 @@
         "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0fgc8.jpg"
       }
     ],
-    "num": 1,
+    "num": 3,
     "country": "Panama",
     "city": "Panama City"
+  },
+  {
+    "id": "1784674078804-bulk1",
+    "lat": 8.982806,
+    "lng": -79.529167,
+    "label": "J.C Bella Vista",
+    "country": "Panama",
+    "city": "Panama City",
+    "fix_date": "2026-05-05",
+    "notes": "Crew: N · Contacto: Cesar",
+    "photos": [],
+    "logged_at": "2026-07-21T00:00:00Z",
+    "num": 4
+  },
+  {
+    "id": "1784674078805-bulk2",
+    "lat": 9.073444,
+    "lng": -79.507417,
+    "label": "J.C Omar Torrijos",
+    "country": "Panama",
+    "city": "Panama City",
+    "fix_date": "2026-05-05",
+    "notes": "Crew: N",
+    "photos": [],
+    "logged_at": "2026-07-21T00:00:00Z",
+    "num": 5
+  },
+  {
+    "id": "1784674078806-bulk3",
+    "lat": 8.931056,
+    "lng": -79.686056,
+    "label": "J.C Pueblo Nuevo (Baquero)",
+    "country": "Panama",
+    "city": "Panama City",
+    "fix_date": "2026-05-11",
+    "notes": "Crew: N · Contacto: Baquero · OJO: coordenadas iguales a Arraijan en la hoja - verificar",
+    "photos": [],
+    "logged_at": "2026-07-21T00:00:00Z",
+    "num": 6
   }
 ]
