@@ -3,12 +3,17 @@
     "id": "1784674078807-bulk4",
     "lat": 8.980333,
     "lng": -79.523972,
-    "label": "Elviria Mendez",
+    "label": "Elvira Mendez",
     "country": "Panama",
     "city": "Panama City",
     "fix_date": "2025-12-11",
     "notes": "Crew: JK",
-    "photos": [],
+    "photos": [
+      {
+        "date": "2026-07-21",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy07rg1.jpg"
+      }
+    ],
     "logged_at": "2026-07-21T00:00:00Z",
     "num": 1
   },
@@ -26,56 +31,6 @@
     "num": 2
   },
   {
-    "id": "1784655268534-j0a3c4",
-    "lat": 8.986948178058068,
-    "lng": -79.51965987682344,
-    "label": "Sortis Hotel",
-    "fix_date": "2026-05-01",
-    "notes": "JK, AF, Honduras Crew",
-    "logged_at": "2026-07-21T17:34:28.536Z",
-    "photos": [
-      {
-        "date": "2026-05-08",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy068g0.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy07rg1.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy08ur2.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0a443.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0b474.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0c4g5.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0czi6.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0ecq7.jpg"
-      },
-      {
-        "date": "2026-04-28",
-        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0fgc8.jpg"
-      }
-    ],
-    "num": 3,
-    "country": "Panama",
-    "city": "Panama City"
-  },
-  {
     "id": "1784674078804-bulk1",
     "lat": 8.982806,
     "lng": -79.529167,
@@ -86,7 +41,7 @@
     "notes": "Crew: N · Contacto: Cesar",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
-    "num": 4
+    "num": 3
   },
   {
     "id": "1784674078805-bulk2",
@@ -99,7 +54,57 @@
     "notes": "Crew: N",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
-    "num": 5
+    "num": 4
+  },
+  {
+    "id": "1784655268534-j0a3c4",
+    "lat": 8.986948178058068,
+    "lng": -79.51965987682344,
+    "label": "Sortis Hotel",
+    "fix_date": "2026-05-08",
+    "notes": "JK, AF, Honduras Crew",
+    "logged_at": "2026-07-21T17:34:28.536Z",
+    "photos": [
+      {
+        "date": "2026-05-08",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy068g0.jpg"
+      },
+      {
+        "date": "2026-05-18",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy08ur2.jpg"
+      },
+      {
+        "date": "2026-05-28",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0a443.jpg"
+      },
+      {
+        "date": "2026-06-07",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0b474.jpg"
+      },
+      {
+        "date": "2026-06-17",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0c4g5.jpg"
+      },
+      {
+        "date": "2026-06-27",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0czi6.jpg"
+      },
+      {
+        "date": "2026-07-05",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0ecq7.jpg"
+      },
+      {
+        "date": "2026-07-12",
+        "path": "photos/1784655268534-j0a3c4/2026-07-21_mruy0fgc8.jpg"
+      },
+      {
+        "date": "2026-07-18",
+        "path": "photos/1784655268534-j0a3c4/2026-07-18_day71.jpg"
+      }
+    ],
+    "num": 5,
+    "country": "Panama",
+    "city": "Panama City"
   },
   {
     "id": "1784674078806-bulk3",
