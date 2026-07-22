@@ -140,5 +140,27 @@
     ],
     "logged_at": "2026-07-22T00:36:58.808Z",
     "num": 7
+  },
+  {
+    "id": "1784681068421-d1zetz",
+    "lat": 18.4643354,
+    "lng": -69.7604803,
+    "label": "Avenida Las Americas",
+    "country": "República Dominicana",
+    "city": "Santo Domingo",
+    "fix_date": "2026-05-11",
+    "notes": "Instalación en carretera de alta velocidad",
+    "photos": [
+      {
+        "date": "2026-05-11",
+        "path": "photos/1784681068421-d1zetz/2026-05-11_mrvd11o20.jpg"
+      },
+      {
+        "date": "2026-05-11",
+        "path": "photos/1784681068421-d1zetz/2026-05-11_mrvd13ru1.jpg"
+      }
+    ],
+    "logged_at": "2026-07-22T00:44:28.421Z",
+    "num": 8
   }
 ]
