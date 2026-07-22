@@ -764,7 +764,8 @@ async function exportVideo(fixId, btn){
     });
     let audioCtx = null, audioDest = null, audioSrc = null;
     try {
-      const ar = await fetch(RAW_BASE + 'assets/teaser_music.mp3');
+      let ar = await fetch(RAW_BASE + 'assets/teaser_music.m4a');
+      if (!ar.ok) ar = await fetch(RAW_BASE + 'assets/teaser_music.mp3');
       if (ar.ok){
         const buf = await ar.arrayBuffer();
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -837,6 +838,13 @@ async function exportVideo(fixId, btn){
       ctx.textAlign = 'right';
       ctx.fillText(`${tag} · ${fix.label || 'Fixed with PowerPatch'}`, W - 40, H - 36);
       ctx.textAlign = 'left';
+      // brand watermark top-right, like the install promo video
+      if (logo){
+        const lw = 190, lh = lw * logo.height / logo.width;
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(logo, W - lw - 28, 22, lw, lh);
+        ctx.globalAlpha = 1;
+      }
     };
 
     // Segment timeline: logo → location card → each photo → logo.
