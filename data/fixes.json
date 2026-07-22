@@ -240,5 +240,35 @@
     ],
     "logged_at": "2026-07-22T01:22:14.215Z",
     "num": 11
+  },
+  {
+    "id": "1784683880691-0fit2a",
+    "lat": 19.434350825834763,
+    "lng": -99.19402241706848,
+    "label": "Eugenio sue 116",
+    "country": "México",
+    "city": "Ciudad de México",
+    "fix_date": "2026-03-10",
+    "notes": "Instalación Calle E.M",
+    "photos": [
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784683880691-0fit2a/2026-03-10_mrvepbmt0.jpg"
+      },
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784683880691-0fit2a/2026-03-10_mrvepd1o1.jpg"
+      },
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784683880691-0fit2a/2026-03-10_mrvepdx02.jpg"
+      },
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784683880691-0fit2a/2026-03-10_mrvepeqq3.jpg"
+      }
+    ],
+    "logged_at": "2026-07-22T01:31:20.691Z",
+    "num": 12
   }
 ]
