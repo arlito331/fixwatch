@@ -177,6 +177,7 @@ a{color:inherit;}
       <input id="fSearch" type="text" placeholder="e.g. Calle 50 y Av. Federico Boyd, Panama City — or 8.9917, -79.5297" onkeydown="if(event.key==='Enter'){event.preventDefault();searchPlace();}"/>
       <div class="field-hint">Press Enter to locate. You can also click the map or drag the pin to fine-tune the exact spot.</div>
     </div>
+    <button class="btn secondary" style="margin-bottom:12px;" onclick="useMyLocation(this)">📍 Use my current location</button>
     <div id="pickMap"></div>
     <div id="coordReadout" class="coord-readout unset">No location set yet — type an address above, click the map, or drag the pin.</div>
   </div>
@@ -496,6 +497,16 @@ function renderCoordReadout(){
     el.textContent = `${pickedLatLng.lat.toFixed(6)}, ${pickedLatLng.lng.toFixed(6)}`;
     el.classList.remove('unset');
   }
+}
+
+function useMyLocation(btn){
+  if (!navigator.geolocation){ alert('Location is not available on this device.'); return; }
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Locating…';
+  navigator.geolocation.getCurrentPosition(
+    pos => { setPickedLocation(pos.coords.latitude, pos.coords.longitude); btn.textContent = orig; btn.disabled = false; },
+    err => { alert('Could not get location: ' + err.message); btn.textContent = orig; btn.disabled = false; },
+    {enableHighAccuracy: true, timeout: 15000}
+  );
 }
 
 function parseCoordString(str){
