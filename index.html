@@ -126,6 +126,12 @@ a{color:inherit;}
 #showSub{font-size:12px;color:var(--muted);margin-top:4px;}
 #showClose{position:absolute;top:18px;right:22px;background:none;border:none;color:#888;font-size:26px;cursor:pointer;}
 #showClose:hover{color:#fff;}
+
+/* live render preview (canvas must be on screen while recording) */
+#renderOverlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10001;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+#renderOverlay.on{display:flex;}
+#renderCanvasSlot canvas{width:min(90vw,760px);height:auto;border-radius:10px;border:1px solid #333;}
+#renderNote{font-size:12px;color:var(--muted);letter-spacing:0.3px;}
 </style>
 </head>
 <body>
@@ -223,6 +229,11 @@ a{color:inherit;}
   <img id="showImg" alt=""/>
   <div id="showDay"></div>
   <div id="showSub"></div>
+</div>
+
+<div id="renderOverlay">
+  <div id="renderCanvasSlot"></div>
+  <div id="renderNote">Rendering teaser… keep this tab visible until the download starts.</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -757,6 +768,14 @@ async function exportVideo(fixId, btn){
     const FRAME_MS = Math.max(200, Math.min(1600, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
+
+    // The canvas must be visibly on screen while recording — Chrome only
+    // reliably delivers frames to captureStream from a composited canvas.
+    // (An off-screen canvas produced all-black videos.) Shown as a live preview.
+    const rov = document.getElementById('renderOverlay');
+    document.getElementById('renderCanvasSlot').appendChild(c);
+    rov.classList.add('on');
+
     const stream = c.captureStream(30);
     if (audioDest) audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
     const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
@@ -765,8 +784,6 @@ async function exportVideo(fixId, btn){
     const chunks = [];
     rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     const done = new Promise(res => { rec.onstop = res; });
-    rec.start();
-    if (audioSrc) audioSrc.start();
 
     const tag = fixTag(fix);
     const card = (lines) => {
@@ -788,21 +805,7 @@ async function exportVideo(fixId, btn){
         card([['PowerFix', '#E8442A', '700 64px -apple-system, Helvetica']]);
       }
     };
-
-    btn.textContent = 'Rendering…';
-    // 1) logo
-    logoCard();
-    await new Promise(r => setTimeout(r, LOGO_MS));
-    // 2) country + location
-    card([
-      [(fix.country || 'Panama').toUpperCase(), '#46C97E', '700 26px -apple-system, Helvetica'],
-      [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Fixed pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
-      [`${tag} · Installed with PowerPatch · ${fix.fix_date}`, '#999', '400 24px -apple-system, Helvetica'],
-    ]);
-    await new Promise(r => setTimeout(r, LOC_MS));
-
-    // photo frames — big Day N + the photo's date to confirm progress
-    for (let i = 0; i < imgs.length; i++){
+    const photoFrame = (i) => {
       const im = imgs[i], f = frames[i];
       ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
       const s = Math.min(W / im.width, H / im.height);
@@ -817,17 +820,43 @@ async function exportVideo(fixId, btn){
       ctx.textAlign = 'right';
       ctx.fillText(`${tag} · ${fix.label || 'Fixed with PowerPatch'}`, W - 40, H - 36);
       ctx.textAlign = 'left';
-      await new Promise(r => setTimeout(r, FRAME_MS));
-    }
+    };
 
-    // 3) close with the logo again
-    logoCard();
-    await new Promise(r => setTimeout(r, LOGO_MS));
+    // Segment timeline: logo → location card → each photo → logo.
+    const segments = [{draw: logoCard, ms: LOGO_MS}];
+    segments.push({draw: () => card([
+      [(fix.country || 'Panama').toUpperCase(), '#46C97E', '700 26px -apple-system, Helvetica'],
+      [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Fixed pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
+      [`${tag} · Installed with PowerPatch · ${fix.fix_date}`, '#999', '400 24px -apple-system, Helvetica'],
+    ]), ms: LOC_MS});
+    for (let i = 0; i < imgs.length; i++) segments.push({draw: () => photoFrame(i), ms: FRAME_MS});
+    segments.push({draw: logoCard, ms: LOGO_MS});
+
+    btn.textContent = 'Rendering…';
+    rec.start();
+    if (audioSrc) audioSrc.start();
+
+    // Keep repainting the current segment on a timer (not rAF — browsers
+    // throttle rAF for hidden/embedded views, which froze or blacked out
+    // the recording). Every paint op feeds a real frame to captureStream.
+    let currentDraw = segments[0].draw;
+    const repaint = setInterval(() => currentDraw(), 100);
+    try {
+      for (const seg of segments){
+        currentDraw = seg.draw;
+        seg.draw();
+        await new Promise(r => setTimeout(r, seg.ms));
+      }
+    } finally {
+      clearInterval(repaint);
+    }
 
     rec.stop();
     await done;
     if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
     if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
+    rov.classList.remove('on');
+    c.remove();
 
     const blob = new Blob(chunks, {type: mime.split(';')[0]});
     const a = document.createElement('a');
@@ -839,6 +868,8 @@ async function exportVideo(fixId, btn){
     btn.textContent = 'Downloaded ✓';
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
   } catch (e) {
+    document.getElementById('renderOverlay').classList.remove('on');
+    document.getElementById('renderCanvasSlot').innerHTML = '';
     alert('Video export failed: ' + (e.message || e));
     btn.textContent = orig; btn.disabled = false;
   }
