@@ -214,5 +214,31 @@
     ],
     "logged_at": "2026-07-22T01:00:17.893Z",
     "num": 10
+  },
+  {
+    "id": "1784683334215-aa2m93",
+    "lat": 14.5865889,
+    "lng": -90.5073528,
+    "label": "Zona 14 con Alcalde Auxiliar",
+    "country": "Guatemala",
+    "city": "Ciudad de Guatemala",
+    "fix_date": "2026-06-25",
+    "notes": "Instalación con Alcalde Auxiliar Zona 14",
+    "photos": [
+      {
+        "date": "2026-06-25",
+        "path": "photos/1784683334215-aa2m93/2026-06-25_mrvedlzk0.jpg"
+      },
+      {
+        "date": "2026-06-25",
+        "path": "photos/1784683334215-aa2m93/2026-06-25_mrvedno71.jpg"
+      },
+      {
+        "date": "2026-06-25",
+        "path": "photos/1784683334215-aa2m93/2026-06-25_mrvedowv2.jpg"
+      }
+    ],
+    "logged_at": "2026-07-22T01:22:14.215Z",
+    "num": 11
   }
 ]
