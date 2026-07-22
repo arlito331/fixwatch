@@ -192,5 +192,27 @@
     ],
     "logged_at": "2026-07-22T00:48:10.269Z",
     "num": 9
+  },
+  {
+    "id": "1784682017893-9y61k9",
+    "lat": 19.3224693,
+    "lng": -99.072628,
+    "label": "Instalación con Obras Mexico (SOBSE)",
+    "country": "México",
+    "city": "Ciudad de México",
+    "fix_date": "2026-03-10",
+    "notes": "Instalación junto a Obras Publicas en Ciudad de Mexico",
+    "photos": [
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784682017893-9y61k9/2026-03-10_mrvdleak0.jpg"
+      },
+      {
+        "date": "2026-03-10",
+        "path": "photos/1784682017893-9y61k9/2026-03-10_mrvdlgsu1.jpg"
+      }
+    ],
+    "logged_at": "2026-07-22T01:00:17.893Z",
+    "num": 10
   }
 ]
