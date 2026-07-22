@@ -132,13 +132,6 @@ a{color:inherit;}
 #showPrev{left:16px;}
 #showNext{right:16px;}
 
-/* live render preview (canvas must be on screen while recording) */
-#renderOverlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10001;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
-#renderOverlay.on{display:flex;}
-#renderCanvasSlot canvas{width:min(90vw,760px);height:auto;border-radius:10px;border:1px solid #333;}
-#renderNote{font-size:12px;color:var(--muted);letter-spacing:0.3px;}
-#renderReady{display:none;gap:10px;align-items:center;}
-#renderReady .btn{text-decoration:none;display:inline-flex;align-items:center;}
 </style>
 </head>
 <body>
@@ -238,16 +231,6 @@ a{color:inherit;}
   <img id="showImg" alt=""/>
   <div id="showDay"></div>
   <div id="showSub"></div>
-</div>
-
-<div id="renderOverlay">
-  <div id="renderCanvasSlot"></div>
-  <div id="renderNote">Rendering teaser… keep this tab visible until it finishes.</div>
-  <div id="renderReady">
-    <a id="dlBtn" class="btn">⬇ Save video</a>
-    <button id="shareBtn" class="btn secondary">Share…</button>
-    <button class="btn secondary" onclick="closeRender()">Close</button>
-  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -745,14 +728,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- video export (client-side MP4/WebM) ----------
-function closeRender(){
-  document.getElementById('renderOverlay').classList.remove('on');
-  document.getElementById('renderCanvasSlot').innerHTML = '';
-  document.getElementById('renderReady').style.display = 'none';
-  document.getElementById('renderNote').textContent = 'Rendering teaser… keep this tab visible until it finishes.';
-  if (window.__teaserUrl){ URL.revokeObjectURL(window.__teaserUrl); window.__teaserUrl = null; }
-}
-
 async function exportVideo(fixId, btn){
   const fix = fixes.find(f => f.id === fixId);
   const groups = photoGroups(fix);
@@ -798,15 +773,6 @@ async function exportVideo(fixId, btn){
     const FRAME_MS = Math.max(200, Math.min(1100, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-
-    // The canvas must be visibly on screen while recording — Chrome only
-    // reliably delivers frames to captureStream from a composited canvas.
-    // (An off-screen canvas produced all-black videos.) Shown as a live preview.
-    closeRender();
-    const rov = document.getElementById('renderOverlay');
-    document.getElementById('renderCanvasSlot').appendChild(c);
-    rov.classList.add('on');
-
     const stream = c.captureStream(30);
     if (audioDest) audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
     // Prefer MP4 (plays everywhere: WhatsApp, iPhone, QuickTime); WebM as fallback.
@@ -883,8 +849,10 @@ async function exportVideo(fixId, btn){
     // browsers throttle rAF in hidden/embedded views, which froze or blacked
     // out the recording. Every paint op feeds a real frame to captureStream.
     const FADE_MS = 400;
+    const totalMs = segments.reduce((s, x) => s + x.ms, 0);
     await new Promise(resolve => {
       let i = 0, segStart = performance.now();
+      const t0 = performance.now();
       const iv = setInterval(() => {
         const now = performance.now();
         if (now - segStart >= segments[i].ms){
@@ -900,6 +868,7 @@ async function exportVideo(fixId, btn){
         } else {
           segments[i].draw();
         }
+        btn.textContent = `Rendering… ${Math.min(99, Math.round((now - t0) / totalMs * 100))}%`;
       }, 33);
     });
 
@@ -912,30 +881,13 @@ async function exportVideo(fixId, btn){
     const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
     const fname = `FixWatch_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
     const url = URL.createObjectURL(blob);
-    window.__teaserUrl = url;
-
-    // attempt the automatic download…
     const a = document.createElement('a');
     a.href = url; a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-    // …and always show explicit Save / Share buttons on the finished preview
-    const dl = document.getElementById('dlBtn');
-    dl.href = url; dl.download = fname;
-    const sb = document.getElementById('shareBtn');
-    const file = new File([blob], fname, {type: blob.type});
-    if (navigator.canShare && navigator.canShare({files: [file]})){
-      sb.style.display = '';
-      sb.onclick = () => navigator.share({files: [file], title: 'PowerFix teaser'}).catch(() => {});
-    } else {
-      sb.style.display = 'none';
-    }
-    document.getElementById('renderNote').textContent = `Teaser ready · ${fname}`;
-    document.getElementById('renderReady').style.display = 'flex';
-
-    btn.textContent = 'Done ✓';
+    btn.textContent = 'Downloaded ✓';
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
   } catch (e) {
-    closeRender();
     alert('Video export failed: ' + (e.message || e));
     btn.textContent = orig; btn.disabled = false;
   }
