@@ -81,15 +81,16 @@ a{color:inherit;}
 .fix-detail{display:none;border-top:1px solid var(--border);padding:16px 14px;background:#161617;}
 .fix-row.open .fix-detail{display:block;}
 
-.tl-group{margin-bottom:16px;}
-.tl-day{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;}
-.tl-day .dn{font-size:13px;font-weight:800;color:var(--accent);}
-.tl-day .dd{font-size:10px;color:var(--dim);font-family:monospace;}
-.tl-edit{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;padding:0 2px;}
-.tl-edit:hover{color:var(--accent);}
-.tl-photos{display:flex;flex-wrap:wrap;gap:8px;}
-.tl-photos img{width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
-.tl-photos img:hover{transform:scale(1.04);}
+/* Netflix-style horizontal photo strip */
+.carousel{display:flex;align-items:center;gap:6px;margin-bottom:14px;}
+.car-btn{flex-shrink:0;width:32px;height:96px;background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:20px;cursor:pointer;transition:color .15s,border-color .15s;}
+.car-btn:hover{color:var(--text);border-color:#3a3a3a;}
+.car-track{display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;flex:1;min-width:0;padding:2px 0;}
+.car-track::-webkit-scrollbar{display:none;}
+.car-item{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:center;}
+.car-day{font-size:11px;font-weight:800;color:var(--accent);}
+.car-item img{width:150px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
+.car-item img:hover{transform:scale(1.05);}
 
 .tl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px dashed #2c2c2e;}
 .tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
@@ -126,6 +127,10 @@ a{color:inherit;}
 #showSub{font-size:12px;color:var(--muted);margin-top:4px;}
 #showClose{position:absolute;top:18px;right:22px;background:none;border:none;color:#888;font-size:26px;cursor:pointer;}
 #showClose:hover{color:#fff;}
+.show-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(26,26,27,.85);border:1px solid #333;color:#bbb;width:46px;height:64px;border-radius:10px;font-size:26px;cursor:pointer;}
+.show-nav:hover{color:#fff;border-color:#555;}
+#showPrev{left:16px;}
+#showNext{right:16px;}
 
 /* live render preview (canvas must be on screen while recording) */
 #renderOverlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10001;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
@@ -226,6 +231,8 @@ a{color:inherit;}
 
 <div id="showOverlay">
   <button id="showClose" onclick="stopShow()">✕</button>
+  <button id="showPrev" class="show-nav" onclick="navShow(-1)">‹</button>
+  <button id="showNext" class="show-nav" onclick="navShow(1)">›</button>
   <img id="showImg" alt=""/>
   <div id="showDay"></div>
   <div id="showSub"></div>
@@ -632,22 +639,6 @@ async function addUpdate(fixId){
 }
 
 // ---------- timeline helpers ----------
-async function editGroupDate(fixId, oldDate){
-  const fix = fixes.find(f => f.id === fixId);
-  if (!fix) return;
-  if (!getGhToken()){ alert('Run the one-time setup first (gear icon).'); return; }
-  const nd = prompt(`These photos are currently dated ${oldDate} (Day ${dayNumber(fix, oldDate)}).\nEnter the correct date (YYYY-MM-DD):`, oldDate);
-  if (!nd || nd === oldDate) return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nd)){ alert('Date must be YYYY-MM-DD.'); return; }
-  fix.photos.forEach(p => { if (p.date === oldDate) p.date = nd; });
-  try {
-    await commitFixes(`re-date photos: ${fix.label || fix.id} ${oldDate} -> ${nd}`);
-    renderMapAndList();
-  } catch (e) {
-    alert('Could not save: ' + (e.message || e));
-  }
-}
-
 function photoGroups(fix){
   const groups = {};
   (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
@@ -697,23 +688,40 @@ function filteredFixes(){
   return fixes.filter(f => (!c || (f.country || 'Unspecified') === c) && (!ci || (f.city || 'Unspecified') === ci));
 }
 
-// ---------- slideshow ----------
-let showTimer = null;
-function playShow(fixId){
-  const fix = fixes.find(f => f.id === fixId);
-  const groups = photoGroups(fix);
+// ---------- photo viewer: lightbox with prev/next + timelapse autoplay ----------
+let showTimer = null, lbFrames = [], lbIdx = 0, lbFix = null;
+
+function fixFrames(fix){
   const frames = [];
-  groups.forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
-  if (!frames.length) return;
-  const ov = document.getElementById('showOverlay');
-  ov.classList.add('on');
-  let i = 0;
+  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
+  return frames;
+}
+function showFrame(){
+  const f = lbFrames[lbIdx];
+  document.getElementById('showImg').src = f.url;
+  document.getElementById('showDay').textContent = `Day ${f.day}`;
+  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Fixed pothole'} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
+}
+function openLightbox(fixId, idx){
+  lbFix = fixes.find(f => f.id === fixId);
+  lbFrames = fixFrames(lbFix);
+  if (!lbFrames.length) return;
+  clearTimeout(showTimer); showTimer = null;
+  lbIdx = Math.min(idx || 0, lbFrames.length - 1);
+  document.getElementById('showOverlay').classList.add('on');
+  showFrame();
+}
+function navShow(d){
+  if (!lbFrames.length) return;
+  clearTimeout(showTimer); showTimer = null; // manual nav stops autoplay
+  lbIdx = (lbIdx + d + lbFrames.length) % lbFrames.length;
+  showFrame();
+}
+function playShow(fixId){
+  openLightbox(fixId, 0);
   const step = () => {
-    const f = frames[i % frames.length];
-    document.getElementById('showImg').src = f.url;
-    document.getElementById('showDay').textContent = `Day ${f.day}`;
-    document.getElementById('showSub').textContent = `${fixTag(fix)} · ${fix.label || 'Fixed pothole'} · ${f.date}`;
-    i++;
+    showFrame();
+    lbIdx = (lbIdx + 1) % lbFrames.length;
     showTimer = setTimeout(step, 1600);
   };
   step();
@@ -722,6 +730,12 @@ function stopShow(){
   clearTimeout(showTimer); showTimer = null;
   document.getElementById('showOverlay').classList.remove('on');
 }
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('showOverlay').classList.contains('on')) return;
+  if (e.key === 'ArrowRight') navShow(1);
+  else if (e.key === 'ArrowLeft') navShow(-1);
+  else if (e.key === 'Escape') stopShow();
+});
 
 // ---------- video export (client-side WebM/MP4) ----------
 async function exportVideo(fixId, btn){
@@ -805,18 +819,21 @@ async function exportVideo(fixId, btn){
         card([['PowerFix', '#E8442A', '700 64px -apple-system, Helvetica']]);
       }
     };
+    const fmtDate = (ds) => new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
     const photoFrame = (i) => {
       const im = imgs[i], f = frames[i];
       ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
       const s = Math.min(W / im.width, H / im.height);
       const w = im.width * s, h = im.height * s;
       ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
-      ctx.fillStyle = 'rgba(13,13,13,.78)'; ctx.fillRect(0, H - 96, W, 96);
-      ctx.fillStyle = '#46C97E'; ctx.font = '700 44px -apple-system, Helvetica';
-      ctx.fillText(`Day ${f.day}`, 40, H - 34);
-      ctx.fillStyle = '#fff'; ctx.font = '600 30px -apple-system, Helvetica';
-      ctx.fillText(f.date, 220, H - 34);
-      ctx.fillStyle = '#999'; ctx.font = '400 20px -apple-system, Helvetica';
+      const g = ctx.createLinearGradient(0, H - 210, 0, H);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
+      ctx.fillStyle = g; ctx.fillRect(0, H - 210, W, 210);
+      ctx.fillStyle = '#fff'; ctx.font = '800 62px -apple-system, Helvetica';
+      ctx.fillText(`Day ${f.day}`, 44, H - 76);
+      ctx.fillStyle = '#7ddfa6'; ctx.font = '600 26px -apple-system, Helvetica';
+      ctx.fillText(fmtDate(f.date), 46, H - 34);
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '400 20px -apple-system, Helvetica';
       ctx.textAlign = 'right';
       ctx.fillText(`${tag} · ${fix.label || 'Fixed with PowerPatch'}`, W - 40, H - 36);
       ctx.textAlign = 'left';
@@ -836,20 +853,29 @@ async function exportVideo(fixId, btn){
     rec.start();
     if (audioSrc) audioSrc.start();
 
-    // Keep repainting the current segment on a timer (not rAF — browsers
-    // throttle rAF for hidden/embedded views, which froze or blacked out
-    // the recording). Every paint op feeds a real frame to captureStream.
-    let currentDraw = segments[0].draw;
-    const repaint = setInterval(() => currentDraw(), 100);
-    try {
-      for (const seg of segments){
-        currentDraw = seg.draw;
-        seg.draw();
-        await new Promise(r => setTimeout(r, seg.ms));
-      }
-    } finally {
-      clearInterval(repaint);
-    }
+    // Timer-driven timeline with crossfades between segments. Timers, not rAF:
+    // browsers throttle rAF in hidden/embedded views, which froze or blacked
+    // out the recording. Every paint op feeds a real frame to captureStream.
+    const FADE_MS = 400;
+    await new Promise(resolve => {
+      let i = 0, segStart = performance.now();
+      const iv = setInterval(() => {
+        const now = performance.now();
+        if (now - segStart >= segments[i].ms){
+          i++; segStart = now;
+          if (i >= segments.length){ clearInterval(iv); return resolve(); }
+        }
+        const el = now - segStart;
+        if (i > 0 && el < FADE_MS){
+          segments[i - 1].draw();
+          ctx.globalAlpha = el / FADE_MS;
+          segments[i].draw();
+          ctx.globalAlpha = 1;
+        } else {
+          segments[i].draw();
+        }
+      }, 33);
+    });
 
     rec.stop();
     await done;
@@ -890,6 +916,11 @@ function esc(s){
 function toggleFix(fixId){
   openFixId = (openFixId === fixId) ? null : fixId;
   renderMapAndList();
+}
+
+function carScroll(fixId, dir){
+  const track = document.getElementById(`car-${fixId}`);
+  if (track) track.scrollBy({left: dir * track.clientWidth * 0.8, behavior: 'smooth'});
 }
 
 function renderMapAndList(){
@@ -933,16 +964,21 @@ function renderMapAndList(){
     const row = document.createElement('div');
     row.className = 'fix-row' + (isOpen ? ' open' : '');
 
-    const timeline = groups.length
-      ? groups.map(g => `
-          <div class="tl-group">
-            <div class="tl-day"><span class="dn">Day ${g.day}</span><span class="dd">${g.date}</span><button class="tl-edit" title="Correct the date of this whole group" onclick="event.stopPropagation();editGroupDate('${f.id}','${g.date}')">✎</button></div>
-            <div class="tl-photos">${g.photos.map(p => `
-              <div class="ph-item">
-                <img loading="lazy" src="${RAW_BASE + p.path}" onclick="event.stopPropagation()" alt="Day ${g.day}"/>
-                <input type="date" class="ph-date" value="${p.date}" data-fix="${f.id}" data-path="${esc(p.path)}" onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
-              </div>`).join('')}</div>
-          </div>`).join('')
+    const flat = [];
+    groups.forEach(g => g.photos.forEach(p => flat.push({p, day: g.day})));
+    const timeline = flat.length
+      ? `<div class="carousel">
+          <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',-1)">‹</button>
+          <div class="car-track" id="car-${f.id}">
+            ${flat.map((it, idx) => `
+              <div class="car-item">
+                <div class="car-day">Day ${it.day}</div>
+                <img loading="lazy" src="${RAW_BASE + it.p.path}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
+                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path)}" onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+              </div>`).join('')}
+          </div>
+          <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
+        </div>`
       : '<div class="no-photos">No photos yet — add the first ones below.</div>';
 
     const place = [f.city, f.country].filter(Boolean).join(', ');
