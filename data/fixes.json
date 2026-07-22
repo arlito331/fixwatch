@@ -118,5 +118,27 @@
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
     "num": 6
+  },
+  {
+    "id": "1784680618808-n5gsgi",
+    "lat": 18.4527045,
+    "lng": -69.6912447,
+    "label": "Avenida Las Americas",
+    "country": "República Dominicana",
+    "city": "Santo Domingo",
+    "fix_date": "2026-06-09",
+    "notes": "Instalación junto al crew de RD Vial",
+    "photos": [
+      {
+        "date": "2026-06-09",
+        "path": "photos/1784680618808-n5gsgi/2026-06-09_mrvcresg0.jpg"
+      },
+      {
+        "date": "2026-06-09",
+        "path": "photos/1784680618808-n5gsgi/2026-06-09_mrvcrgqf1.jpg"
+      }
+    ],
+    "logged_at": "2026-07-22T00:36:58.808Z",
+    "num": 7
   }
 ]
