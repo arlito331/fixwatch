@@ -8,7 +8,7 @@ Part of the PowerFix tool family: [PotholeWatch](https://github.com/arlito331/po
 
 ## How a pothole gets reported and fixed
 
-1. **Report** (staff-only): search an address, click the map, drag the pin, or use GPS; attach "before" photos; add notes. The pothole appears as a red dot.
+1. **Report** (staff-only): search any address, business, or place (live suggestions, Google-Maps-style, biased to the visible map area), click the map, drag the pin, or use GPS; attach 1–3 "before" photos (**required**); add notes. The pothole appears as a red dot.
 2. **Fix** — a red dot turns green either way:
    - the manual **"Mark fixed"** toggle (with a fix date), or
    - **uploading an "after" photo** — any upload on an open pothole marks it fixed, no AI verification for now.
