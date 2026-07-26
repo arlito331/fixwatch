@@ -1,36 +1,44 @@
-# FixWatch
+# LogPothole
 
-**FixWatch** tracks potholes that have been repaired with **PowerPatch** — proof that a fix is holding, not just that it was made.
+**LogPothole** lets government road crews report specific potholes — a photo plus an exact location — and track them to repair. Every report is a **red dot** on the map until it's fixed, then it turns **green**.
 
-Part of the PowerFix tool family: [PotholeWatch](https://github.com/arlito331/potholewatch) (reactive incident monitor) · [Case Study Generator](https://github.com/arlito331/powerfix-case-study) (ROI PDFs) · [PotholeRadar](https://github.com/arlito331/potholeradar) (proactive area scanner) · **FixWatch** (post-repair durability tracker).
+Formerly **FixWatch** (post-repair durability tracker). The pivot inverts the lifecycle: records are now born *reported* (red) and become *fixed* (green), instead of being logged only after repair. Everything FixWatch tracked — photo timelines, "days holding", timelapse and video export — still works on fixed potholes.
 
-## What it tracks
+Part of the PowerFix tool family: [PotholeWatch](https://github.com/arlito331/potholewatch) (reactive incident monitor) · [Case Study Generator](https://github.com/arlito331/powerfix-case-study) (ROI PDFs) · [PotholeRadar](https://github.com/arlito331/potholeradar) (proactive area scanner) · **LogPothole** (report → fix tracker).
 
-Two things, deliberately kept minimal:
+## How a pothole gets reported and fixed
 
-1. **Exact location** — search a place, click the map, drag the pin, or paste coordinates.
-2. **Date fixed with PowerPatch** — used to compute "days holding" live, client-side, every time the page loads.
+1. **Report** (staff-only): search an address, click the map, drag the pin, or use GPS; attach "before" photos; add notes. The pothole appears as a red dot.
+2. **Fix** — a red dot turns green either way:
+   - the manual **"Mark fixed"** toggle (with a fix date), or
+   - **uploading an "after" photo** — any upload on an open pothole marks it fixed, no AI verification for now.
+3. **Prove it holds**: fixed potholes keep the FixWatch photo timeline ("Day 0", "Day 20", …), live "days holding" math, timelapse playback, and client-side video export.
 
-Optional label/notes can be attached to a fix, but the core record is just `{lat, lng, fix_date}`.
+A fixed pothole can be **reopened** if the repair fails.
+
+## Ruta crítica
+
+The map list doubles as the critical-path backlog: open potholes first (oldest report on top), then fixed ones (longest holding on top). An actual routing feature over this ordering is planned. Also planned, not built: pothole size / material-volume estimation.
 
 ## How it works
 
-- `index.html` (GitHub Pages) is the whole app — a **Fixed Map** tab (all logged fixes, sorted by days holding, longest first) and a **Log a Fix** tab (map picker + date + notes).
-- Data lives in `data/fixes.json`, a flat JSON array. There's no backend — the browser reads it via `raw.githubusercontent.com` and writes new entries directly through GitHub's Contents API.
-- Click the gear icon once and paste a GitHub personal access token with **`repo`** scope (stored only in your browser's localStorage — never sent anywhere except `api.github.com`). That's the only auth this app needs; logging a fix requires no server-side secrets, so there's no GitHub Actions workflow involved.
-- "Days holding" is never stored — it's recomputed from `fix_date` vs. today on every page load, so it's always current.
+- `index.html` (GitHub Pages) is the whole app — a **Map · Ruta Crítica** tab and a **Report a Pothole** tab. No build step, no backend.
+- Data lives in `data/fixes.json`, a flat JSON array. The browser reads it via `raw.githubusercontent.com` and writes through GitHub's Contents API.
+- Core record: `{lat, lng, report_date, status: "reported" | "fixed", fix_date, photos}`. Records without a `status` (pre-pivot FixWatch data) are treated as `fixed`.
+- Reporting is **government-staff-only for now**: writing requires the staff access code (a GitHub token with `repo` scope) pasted once via the gear icon, stored only in the browser's localStorage.
+- "Days open" / "days holding" are never stored — recomputed on every page load.
 
 ## Running locally
-
-No build step, no dependencies. Just open `index.html` in a browser, or serve the folder statically:
 
 ```bash
 python3 -m http.server 8000
 ```
 
+Or just open `index.html` in a browser.
+
 ## Roadmap (not built yet)
 
-- Photo attachment per fix (before/after or just "still holding" proof shots)
-- Linking a fix back to the PotholeRadar finding or PotholeWatch incident it originated from
-- Filtering the Fixed Map by territory/country
-- Surfacing durability stats (e.g. "average days holding") in the Case Study Generator's PDFs
+- Routing over the ruta crítica (ordered repair route for a crew day)
+- Pothole size / material-volume estimation from report photos
+- AI verification of "after" photos (currently any upload marks a pothole fixed)
+- Public (non-staff) reporting with moderation

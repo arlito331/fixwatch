@@ -7,6 +7,8 @@
     "country": "Panama",
     "city": "Panama City",
     "fix_date": "2025-12-11",
+    "report_date": "2025-12-11",
+    "status": "fixed",
     "notes": "Crew: JK",
     "photos": [
       {
@@ -25,6 +27,8 @@
     "country": "México",
     "city": "Ciudad de México",
     "fix_date": "2026-03-10",
+    "report_date": "2026-03-10",
+    "status": "fixed",
     "notes": "Instalación junto a Obras Publicas en Ciudad de Mexico",
     "photos": [
       {
@@ -47,6 +51,8 @@
     "country": "México",
     "city": "Ciudad de México",
     "fix_date": "2026-03-10",
+    "report_date": "2026-03-10",
+    "status": "fixed",
     "notes": "Instalación Calle E.M",
     "photos": [
       {
@@ -77,6 +83,8 @@
     "country": "Panama",
     "city": "Arraiján",
     "fix_date": "2026-04-21",
+    "report_date": "2026-04-21",
+    "status": "fixed",
     "notes": "Crew: AA, JK, N · MOP - Rodolfo y Ingeniera",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
@@ -90,6 +98,8 @@
     "country": "Panama",
     "city": "Panama City",
     "fix_date": "2026-05-05",
+    "report_date": "2026-05-05",
+    "status": "fixed",
     "notes": "Crew: N · Contacto: Cesar",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
@@ -103,6 +113,8 @@
     "country": "Panama",
     "city": "Panama City",
     "fix_date": "2026-05-05",
+    "report_date": "2026-05-05",
+    "status": "fixed",
     "notes": "Crew: N",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
@@ -114,6 +126,8 @@
     "lng": -79.51965987682344,
     "label": "Sortis Hotel",
     "fix_date": "2026-05-08",
+    "report_date": "2026-05-08",
+    "status": "fixed",
     "notes": "JK, AF, Honduras Crew",
     "logged_at": "2026-07-21T17:34:28.536Z",
     "photos": [
@@ -166,6 +180,8 @@
     "country": "Panama",
     "city": "Panama City",
     "fix_date": "2026-05-11",
+    "report_date": "2026-05-11",
+    "status": "fixed",
     "notes": "Crew: N · Contacto: Baquero · OJO: coordenadas iguales a Arraijan en la hoja - verificar",
     "photos": [],
     "logged_at": "2026-07-21T00:00:00Z",
@@ -179,6 +195,8 @@
     "country": "República Dominicana",
     "city": "Santo Domingo",
     "fix_date": "2026-05-11",
+    "report_date": "2026-05-11",
+    "status": "fixed",
     "notes": "Instalación en carretera de alta velocidad",
     "photos": [
       {
@@ -201,6 +219,8 @@
     "country": "República Dominicana",
     "city": "Santo Domingo",
     "fix_date": "2026-06-09",
+    "report_date": "2026-06-09",
+    "status": "fixed",
     "notes": "Instalación junto al crew de RD Vial",
     "photos": [
       {
@@ -223,6 +243,8 @@
     "country": "República Dominicana",
     "city": "Santo Domingo",
     "fix_date": "2026-06-09",
+    "report_date": "2026-06-09",
+    "status": "fixed",
     "notes": "Instalación con el crew de RD Vial. Calle Secundaria",
     "photos": [
       {
@@ -253,6 +275,8 @@
     "country": "Guatemala",
     "city": "Ciudad de Guatemala",
     "fix_date": "2026-06-25",
+    "report_date": "2026-06-25",
+    "status": "fixed",
     "notes": "Instalación con Alcalde Auxiliar Zona 14",
     "photos": [
       {
