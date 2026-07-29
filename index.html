@@ -396,31 +396,150 @@ function fixNum(f){
 }
 function fixTag(f){ return 'LP-' + String(fixNum(f)).padStart(3, '0'); }
 
-// ---------- image compression ----------
-function compressImage(file, maxW=1280, quality=0.82){
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxW / img.width);
-      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = c.toDataURL('image/jpeg', quality);
-      URL.revokeObjectURL(img.src);
-      resolve(dataUrl.split(',')[1]);
-    };
-    img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error('could not read image')); };
-    img.src = URL.createObjectURL(file);
+// ---------- image compression + GPS-camera-style stamp ----------
+function loadImg(src){
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('could not read image'));
+    im.src = src;
   });
 }
 
+async function compressImage(file, stamp, maxW=1280, quality=0.82){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const scale = Math.min(1, maxW / img.width);
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    if (stamp) await drawStamp(ctx, w, h, stamp);
+    return c.toDataURL('image/jpeg', quality).split(',')[1];
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// Street-level address for the stamp, cached per pothole (never persisted).
+const addrCache = {};
+async function stampAddress(fix){
+  if (addrCache[fix.id]) return addrCache[fix.id];
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${fix.lat}&lon=${fix.lng}&format=json&zoom=18&accept-language=es`);
+    addrCache[fix.id] = (await r.json()).address || {};
+  } catch (e){ addrCache[fix.id] = {}; }
+  return addrCache[fix.id];
+}
+
+function fmtEsDate(d){
+  return new Date(d + 'T00:00:00Z').toLocaleDateString('es-DO', {day:'numeric', month:'short', year:'numeric', timeZone:'UTC'})
+    .replace(/ de /g, ' ').replace(/\./g, ''); // "11 may 2026", GPS-camera style
+}
+function fmtEsTime(t){
+  const [H, M, S] = t.split(':').map(Number);
+  return new Date(Date.UTC(2000, 0, 1, H, M, S)).toLocaleTimeString('es-DO',
+    {hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true, timeZone:'UTC'});
+}
+
+function buildStampLines(fix, addr, date, time){
+  const lines = [fmtEsDate(date) + (time ? ' ' + fmtEsTime(time) : '')];
+  const road = addr.road || addr.pedestrian || fix.label || '';
+  const area = addr.suburb || addr.borough || addr.municipality || addr.town || addr.village || '';
+  const city = fix.city || addr.city || addr.state || '';
+  const country = fix.country || addr.country || '';
+  [road, area, city, country].forEach(s => { if (s && !lines.includes(s)) lines.push(s); });
+  lines.push(`Lat: ${fix.lat.toFixed(6)}  Lng: ${fix.lng.toFixed(6)}`);
+  if (fix.alt != null) lines.push(`Altitud: ${fix.alt}msnm`);
+  if (fix.speed_kmh != null) lines.push(`Velocidad: ${fix.speed_kmh}km/h`);
+  lines.push(`Número de índice: ${fixNum(fix)}`);
+  return lines;
+}
+
+// Slippy-map tile math (Web Mercator)
+function tileXY(lat, lng, z){
+  const n = 2 ** z;
+  return {
+    x: (lng + 180) / 360 * n,
+    y: (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n,
+  };
+}
+
+// Small map inset with a pin, bottom-left, like GPS camera apps.
+// Tiles come from CARTO's CORS-enabled raster CDN; any failure skips the inset.
+async function drawMapInset(ctx, W, H, lat, lng){
+  const iw = Math.round(W * 0.26), ih = Math.round(iw * 0.85);
+  const x0 = 0, y0 = H - ih;
+  const z = 15, T = 256;
+  const c = tileXY(lat, lng, z);
+  const cpx = c.x * T, cpy = c.y * T;
+  const left = cpx - iw / 2, top = cpy - ih / 2;
+  const tiles = [];
+  for (let tx = Math.floor(left / T); tx <= Math.floor((left + iw) / T); tx++)
+    for (let ty = Math.floor(top / T); ty <= Math.floor((top + ih) / T); ty++)
+      tiles.push({tx, ty});
+  const imgs = await Promise.race([
+    Promise.all(tiles.map(t =>
+      loadImg(`https://a.basemaps.cartocdn.com/rastertiles/voyager/${z}/${t.tx}/${t.ty}.png`).catch(() => null))),
+    new Promise(res => setTimeout(() => res(null), 5000)),
+  ]);
+  if (!imgs || imgs.every(i => !i)) return; // offline / CORS issue — no inset
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0, y0, iw, ih); ctx.clip();
+  ctx.fillStyle = '#e8e6e1'; ctx.fillRect(x0, y0, iw, ih);
+  tiles.forEach((t, i) => {
+    if (imgs[i]) ctx.drawImage(imgs[i], x0 + (t.tx * T - left), y0 + (t.ty * T - top), T, T);
+  });
+  // red pin at the pothole
+  const px = x0 + iw / 2, py = y0 + ih / 2, r = Math.max(6, Math.round(iw * 0.05));
+  ctx.beginPath(); ctx.moveTo(px, py);
+  ctx.lineTo(px - r * 0.8, py - r * 1.6); ctx.arc(px, py - r * 1.6, r * 0.8, Math.PI, 0);
+  ctx.lineTo(px, py); ctx.closePath();
+  ctx.fillStyle = '#E03131'; ctx.fill();
+  ctx.strokeStyle = '#7a1010'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(px, py - r * 1.6, r * 0.32, 0, Math.PI * 2); ctx.fillStyle = '#7a1010'; ctx.fill();
+  // attribution (required by the tile license)
+  ctx.font = `400 ${Math.max(8, Math.round(iw * 0.052))}px Helvetica, Arial`;
+  ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.textAlign = 'left';
+  ctx.fillText('© OpenStreetMap © CARTO', x0 + 4, y0 + ih - 4);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
+  ctx.strokeRect(x0 + 1, y0 + 1, iw - 2, ih - 2);
+}
+
+async function drawStamp(ctx, W, H, stamp){
+  await drawMapInset(ctx, W, H, stamp.lat, stamp.lng);
+  const M = Math.round(W * 0.028);
+  const insetW = Math.round(W * 0.26);
+  const maxLineW = W - insetW - M * 3;
+  const base = Math.max(16, Math.round(W * 0.038));
+  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  let y = H - M;
+  for (let i = stamp.lines.length - 1; i >= 0; i--){
+    let fs = i === 0 ? Math.round(base * 1.2) : base; // datetime line biggest
+    ctx.font = `700 ${fs}px Helvetica, Arial`;
+    while (fs > 11 && ctx.measureText(stamp.lines[i]).width > maxLineW){
+      fs--; ctx.font = `700 ${fs}px Helvetica, Arial`;
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.lineWidth = Math.max(2, Math.round(fs * 0.16));
+    ctx.fillStyle = '#fff';
+    ctx.strokeText(stamp.lines[i], W - M, y);
+    ctx.fillText(stamp.lines[i], W - M, y);
+    y -= Math.round(fs * 1.22);
+  }
+  ctx.textAlign = 'left';
+}
+
 async function uploadPhotoItems(fix, items, progressCb){
+  progressCb && progressCb('Preparing stamp…');
+  const addr = await stampAddress(fix);
   const added = [];
   for (let i = 0; i < items.length; i++){
-    const {file, date} = items[i];
+    const {file, date, time} = items[i];
     progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
-    const b64 = await compressImage(file);
+    const stamp = {lat: fix.lat, lng: fix.lng, lines: buildStampLines(fix, addr, date, time)};
+    const b64 = await compressImage(file, stamp);
     const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
     await ghPutFile(path, b64, `photo: ${fix.label || fix.id} day ${dayNumber(fix, date)}`);
     added.push({date, path});
@@ -471,8 +590,8 @@ function readExifDate(file){
               const dt = scanIFD(ifd0, 0x0132);
               if (dt) dateStr = readAscii(dt);
             }
-            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})/);
-            return resolve(m ? `${m[1]}-${m[2]}-${m[3]}` : null);
+            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+            return resolve(m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null);
           }
           if ((marker & 0xFF00) !== 0xFF00) break;
           o += 2 + size;
@@ -484,15 +603,19 @@ function readExifDate(file){
   });
 }
 
-async function bestPhotoDate(file){
+async function bestPhotoDateTime(file){
   const exif = await readExifDate(file);
-  if (exif) return exif;
+  if (exif && exif.date) return {date: exif.date, time: exif.time};
   if (file.lastModified){
     const d = new Date(file.lastModified);
-    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+    if (!isNaN(d)) return {date: d.toISOString().slice(0, 10),
+      time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`};
   }
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return {date: now.toISOString().slice(0, 10),
+    time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`};
 }
+async function bestPhotoDate(file){ return (await bestPhotoDateTime(file)).date; }
 
 // ---------- staged update photos (one date per photo) ----------
 const staged = {};
@@ -504,9 +627,9 @@ async function stageFiles(fixId){
   staged[fixId] = [];
   listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
   for (const f of files){
-    const date = await bestPhotoDate(f);
+    const {date, time} = await bestPhotoDateTime(f);
     const i = staged[fixId].length;
-    staged[fixId].push({file: f, date});
+    staged[fixId].push({file: f, date, time});
     const row = document.createElement('div');
     row.className = 'stage-row';
     row.innerHTML = `<span class="sr-name">📷 ${esc(f.name)}</span>
@@ -537,13 +660,16 @@ function initPickMap(){
   pickMap.on('click', (e) => setPickedLocation(e.latlng.lat, e.latlng.lng));
 }
 
-function setPickedLocation(lat, lng, label){
+let pickedGps = null; // altitude/speed, only when the GPS button set the pin
+function setPickedLocation(lat, lng, label, gps){
   pickedLatLng = {lat, lng};
+  pickedGps = gps || null;
   if (!pickMarker){
     pickMarker = L.marker([lat, lng], {draggable:true}).addTo(pickMap);
     pickMarker.on('dragend', () => {
       const p = pickMarker.getLatLng();
       pickedLatLng = {lat: p.lat, lng: p.lng};
+      pickedGps = null; // pin moved away from the GPS reading
       renderCoordReadout();
     });
   } else {
@@ -583,7 +709,13 @@ function useMyLocation(btn){
   if (!navigator.geolocation){ alert('Location is not available on this device.'); return; }
   const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Locating…';
   navigator.geolocation.getCurrentPosition(
-    pos => { setPickedLocation(pos.coords.latitude, pos.coords.longitude); btn.textContent = orig; btn.disabled = false; },
+    pos => {
+      setPickedLocation(pos.coords.latitude, pos.coords.longitude, null, {
+        alt: pos.coords.altitude != null ? Math.round(pos.coords.altitude * 10) / 10 : null,
+        speed_kmh: pos.coords.speed != null ? Math.round(pos.coords.speed * 36) / 10 : 0,
+      });
+      btn.textContent = orig; btn.disabled = false;
+    },
     err => { alert('Could not get location: ' + err.message); btn.textContent = orig; btn.disabled = false; },
     {enableHighAccuracy: true, timeout: 15000}
   );
@@ -720,10 +852,19 @@ async function logFix(){
     photos: [],
     logged_at: new Date().toISOString(),
   };
+  if (pickedGps){
+    if (pickedGps.alt != null) entry.alt = pickedGps.alt;
+    entry.speed_kmh = pickedGps.speed_kmh;
+  }
+  // Provisional index for the photo stamp; recomputed against fresh data below.
+  entry.num = fixes.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
 
   btn.disabled = true;
   try {
-    const items = Array.from(photoInput.files).map(f => ({file: f, date: dateVal}));
+    const items = [];
+    for (const f of Array.from(photoInput.files)){
+      items.push({file: f, date: dateVal, time: (await bestPhotoDateTime(f)).time});
+    }
     entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
     msg.textContent = 'Saving…';
 
@@ -752,6 +893,7 @@ async function logFix(){
     document.getElementById('fNotes').value = '';
     document.getElementById('fPhotos').value = '';
     pickedLatLng = null;
+    pickedGps = null;
     if (pickMarker){ pickMap.removeLayer(pickMarker); pickMarker = null; }
     renderCoordReadout();
     document.getElementById('fDate').valueAsDate = new Date();
