@@ -843,7 +843,7 @@ async function logFix(){
     lat: pickedLatLng.lat,
     lng: pickedLatLng.lng,
     label: document.getElementById('fLabel').value.trim(),
-    country: document.getElementById('fCountry').value.trim(),
+    country: normCountry(document.getElementById('fCountry').value),
     city: document.getElementById('fCity').value.trim(),
     fix_date: null,
     report_date: dateVal,
@@ -1015,21 +1015,40 @@ async function saveDates(fixId){
 }
 
 // ---------- country / city filters ----------
+// "Panamá" from the Spanish geocoder and "Panama" typed by hand are the same
+// country; filters compare accent- and case-insensitively so records never
+// hide under a variant spelling.
+function fold(s){ return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+const COUNTRY_CANON = {
+  'panama':'Panama', 'mexico':'México', 'guatemala':'Guatemala', 'honduras':'Honduras',
+  'el salvador':'El Salvador', 'nicaragua':'Nicaragua', 'costa rica':'Costa Rica',
+  'colombia':'Colombia', 'republica dominicana':'República Dominicana',
+  'dominican republic':'República Dominicana',
+};
+function normCountry(s){ s = (s || '').trim(); return COUNTRY_CANON[fold(s)] || s; }
+
 function populateFilters(){
   const cSel = document.getElementById('fltCountry'), citySel = document.getElementById('fltCity');
-  const countries = [...new Set(fixes.map(f => f.country || 'Unspecified'))].sort();
+  const uniq = list => {
+    const seen = {};
+    list.forEach(v => { const k = fold(v); if (!seen[k]) seen[k] = v; });
+    return Object.values(seen).sort((a,b) => a.localeCompare(b));
+  };
+  const countries = uniq(fixes.map(f => normCountry(f.country) || 'Unspecified'));
   const curC = cSel.value;
-  cSel.innerHTML = '<option value="">All countries</option>' + countries.map(c => `<option${c===curC?' selected':''}>${esc(c)}</option>`).join('');
-  const inC = fixes.filter(f => !cSel.value || (f.country || 'Unspecified') === cSel.value);
-  const cities = [...new Set(inC.map(f => f.city || 'Unspecified'))].sort();
+  cSel.innerHTML = '<option value="">All countries</option>' + countries.map(c => `<option${fold(c)===fold(curC)?' selected':''}>${esc(c)}</option>`).join('');
+  const inC = fixes.filter(f => !cSel.value || fold(normCountry(f.country) || 'Unspecified') === fold(cSel.value));
+  const cities = uniq(inC.map(f => f.city || 'Unspecified'));
   const curCity = citySel.value;
-  citySel.innerHTML = '<option value="">All cities</option>' + cities.map(c => `<option${c===curCity?' selected':''}>${esc(c)}</option>`).join('');
+  citySel.innerHTML = '<option value="">All cities</option>' + cities.map(c => `<option${fold(c)===fold(curCity)?' selected':''}>${esc(c)}</option>`).join('');
 }
 
 function filteredFixes(){
   const s = document.getElementById('fltStatus').value;
-  const c = document.getElementById('fltCountry').value, ci = document.getElementById('fltCity').value;
-  return fixes.filter(f => (!s || f.status === s) && (!c || (f.country || 'Unspecified') === c) && (!ci || (f.city || 'Unspecified') === ci));
+  const c = fold(document.getElementById('fltCountry').value), ci = fold(document.getElementById('fltCity').value);
+  return fixes.filter(f => (!s || f.status === s)
+    && (!c || fold(normCountry(f.country) || 'Unspecified') === c)
+    && (!ci || fold(f.city || 'Unspecified') === ci));
 }
 
 // ---------- photo viewer: lightbox with prev/next + timelapse autoplay ----------
@@ -1402,6 +1421,7 @@ async function loadFixes(){
     if (!f.photos) f.photos = [];
     if (!f.status) f.status = f.fix_date ? 'fixed' : 'reported';
     if (!f.report_date) f.report_date = f.fix_date || (f.logged_at || '').slice(0, 10);
+    f.country = normCountry(f.country);
   });
   renderMapAndList();
 }
