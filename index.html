@@ -322,6 +322,16 @@ function updateGearDot(){
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
 }
 
+// A 401 from GitHub means the stored access code expired or was revoked.
+// Turn the gear dot red and show the banner so the fix is obvious.
+function markTokenExpired(){
+  document.getElementById('gearDot').className = 'gear-dot';
+  const b = document.getElementById('setupBanner');
+  b.style.display = 'block';
+  b.innerHTML = 'Your access code has <b>expired or was revoked</b> — click <b onclick="promptToken()">one-time setup</b> and paste the new code (ask Ariel for it).';
+}
+const TOKEN_EXPIRED_MSG = 'Access code expired or invalid — tap the gear icon (top right) and paste the new code.';
+
 async function ghFetch(url, opts={}){
   const token = getGhToken();
   return fetch(url, {
@@ -341,6 +351,10 @@ async function ghPutFile(path, b64, message, sha){
     method: 'PUT',
     body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
   });
+  if (res.status === 401){
+    markTokenExpired();
+    throw new Error(TOKEN_EXPIRED_MSG);
+  }
   if (!res.ok){
     const e = await res.json().catch(() => ({}));
     throw new Error(e.message || `save failed (${res.status})`);
@@ -508,6 +522,7 @@ async function commitFixes(message){
   const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
   let sha = null;
   if (getRes.ok){ sha = (await getRes.json()).sha; }
+  else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
   else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(fixes, null, 2))));
   await ghPutFile(DATA_PATH, b64, message, sha);
@@ -1227,6 +1242,8 @@ async function loadFixes(){
       if (r.ok){
         const d = await r.json();
         loaded = JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,'')))));
+      } else if (r.status === 401){
+        markTokenExpired(); // map still loads from the public copy below
       }
     } catch (e) { /* fall through to raw */ }
   }
