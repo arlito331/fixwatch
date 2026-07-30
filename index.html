@@ -24,6 +24,7 @@ a{color:inherit;}
 .gear-btn:hover{opacity:1;}
 .gear-dot{position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:var(--red);}
 .gear-dot.ok{background:var(--accent);}
+.role-chip{flex-shrink:0;background:rgba(63,127,224,.15);border:1px solid rgba(63,127,224,.5);color:#7fa8e8;font-size:9px;font-weight:800;letter-spacing:1.5px;border-radius:5px;padding:4px 8px;}
 
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);padding:0 20px;}
 .tab-btn{padding:14px 4px;margin-right:28px;background:none;border:none;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;}
@@ -193,6 +194,7 @@ a{color:inherit;}
     <div class="header-title">Pothole Reporting &amp; Fix Tracker</div>
     <div class="header-sub">Report a pothole with a photo and exact location — red until it's fixed, green once repaired.</div>
   </div>
+  <span id="roleChip" class="role-chip" style="display:none;" title="Field access: report potholes and add photos only">FIELD</span>
   <button class="gear-btn" onclick="promptToken()" title="One-time setup">
     ⚙️<span id="gearDot" class="gear-dot"></span>
   </button>
@@ -310,16 +312,28 @@ let listMarkers = [];
 let openFixId = null;
 
 // ---------- access code (GitHub token under the hood) ----------
+// Two codes exist: the master code (full control) and the field code — the
+// same code prefixed "field:" — which only lets people report potholes and
+// add photos. The restriction is enforced by the app, not by GitHub.
 function getGhToken(){ return localStorage.getItem('fw_gh_token'); }
 function setGhToken(t){ localStorage.setItem('fw_gh_token', t); }
+function isField(){ return localStorage.getItem('fw_role') === 'field'; }
 function promptToken(){
-  const t = prompt('One-time setup\n\nPaste the PowerFix access code here (ask Ariel for it).\nIt stays saved in this browser — you only do this once.');
-  if (t) { setGhToken(t.trim()); updateGearDot(); }
+  const t = prompt('One-time setup\n\nPaste your access code here (ask Ariel for it).\nIt stays saved in this browser — you only do this once.\n\nMaster code: full control.\nField code (starts with "field:"): report potholes and add photos only.');
+  if (t){
+    let v = t.trim(), role = 'master';
+    if (/^field:/i.test(v)){ role = 'field'; v = v.replace(/^field:/i, '').trim(); }
+    setGhToken(v);
+    localStorage.setItem('fw_role', role);
+    updateGearDot();
+    if (fixes.length) renderMapAndList();
+  }
 }
 function updateGearDot(){
   const has = !!getGhToken();
   document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
+  document.getElementById('roleChip').style.display = (has && isField()) ? 'inline-block' : 'none';
 }
 
 // A 401 from GitHub means the stored access code expired or was revoked.
@@ -917,7 +931,9 @@ async function addUpdate(fixId){
   if (items.some(it => !it.date)){ msgEl.className='row-msg err'; msgEl.textContent='Every photo needs a date.'; return; }
 
   try {
-    const wasOpen = !isFixed(fix);
+    // Field users add photos without changing status; for masters, an
+    // "after" photo on an open pothole marks it fixed.
+    const wasOpen = !isFixed(fix) && !isField();
     const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
     fix.photos = (fix.photos || []).concat(added);
     // Any "after" photo upload on an open pothole marks it fixed — no
@@ -947,6 +963,7 @@ async function addUpdate(fixId){
 
 // ---------- manual Fixed toggle ----------
 async function markFixed(fixId){
+  if (isField()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
@@ -965,6 +982,7 @@ async function markFixed(fixId){
 }
 
 async function reopenFix(fixId){
+  if (isField()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
@@ -990,6 +1008,7 @@ function photoGroups(fix){
 
 // ---------- per-photo date editing on already-uploaded photos ----------
 function photoDateChanged(el){
+  if (isField()) return;
   const fix = fixes.find(f => f.id === el.dataset.fix);
   const p = fix && fix.photos.find(x => x.path === el.dataset.path);
   if (!p) return;
@@ -1000,6 +1019,7 @@ function photoDateChanged(el){
 }
 
 async function saveDates(fixId){
+  if (isField()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
@@ -1343,7 +1363,7 @@ function renderMapAndList(){
               <div class="car-item">
                 <div class="car-day">Day ${it.day}</div>
                 <img loading="lazy" src="${RAW_BASE + it.p.path}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
-                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path)}" onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path)}" ${isField() ? 'disabled' : ''} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
           <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
@@ -1352,10 +1372,10 @@ function renderMapAndList(){
 
     const place = [f.city, f.country].filter(Boolean).join(', ');
 
-    const statusActions = fixed
+    const statusActions = isField() ? '' : (fixed
       ? `<button class="btn small secondary" onclick="event.stopPropagation();reopenFix('${f.id}')">↩ Reopen</button>`
       : `<input type="date" id="fixedDate-${f.id}" value="${new Date().toISOString().slice(0,10)}" onclick="event.stopPropagation()"/>
-         <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`;
+         <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`);
 
     row.innerHTML = `
       <div class="fix-head" onclick="toggleFix('${f.id}')">
@@ -1376,8 +1396,8 @@ function renderMapAndList(){
         <div class="tl-actions">
           ${statusActions}
           <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
-          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${fixed ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
-          <button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>
+          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
           <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
