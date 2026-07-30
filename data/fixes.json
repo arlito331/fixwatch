@@ -353,9 +353,9 @@
     "label": "",
     "country": "Panama",
     "city": "Bella Vista",
-    "fix_date": null,
+    "fix_date": "2026-07-30",
     "report_date": "2026-07-30",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
