@@ -345,5 +345,27 @@
     ],
     "logged_at": "2026-07-26T23:12:37.225Z",
     "num": 14
+  },
+  {
+    "id": "1785435796418-i1uvtt",
+    "lat": 8.980620327786772,
+    "lng": -79.5240959209401,
+    "label": "",
+    "country": "Panama",
+    "city": "Bella Vista",
+    "fix_date": null,
+    "report_date": "2026-07-30",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-07-30",
+        "path": "photos/1785435796418-i1uvtt/2026-07-30_ms7udicl0.jpg"
+      }
+    ],
+    "logged_at": "2026-07-30T18:23:16.429Z",
+    "alt": 28.7,
+    "speed_kmh": 0,
+    "num": 15
   }
 ]
