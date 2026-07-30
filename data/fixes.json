@@ -353,14 +353,22 @@
     "label": "",
     "country": "Panama",
     "city": "Bella Vista",
-    "fix_date": null,
+    "fix_date": "2026-07-29",
     "report_date": "2026-07-30",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
         "date": "2026-07-30",
         "path": "photos/1785435796418-i1uvtt/2026-07-30_ms7udicl0.jpg"
+      },
+      {
+        "date": "2026-07-29",
+        "path": "photos/1785435796418-i1uvtt/2026-07-29_ms7unpa90.jpg"
+      },
+      {
+        "date": "2026-07-29",
+        "path": "photos/1785435796418-i1uvtt/2026-07-29_ms7uol8a0.jpg"
       }
     ],
     "logged_at": "2026-07-30T18:23:16.429Z",
