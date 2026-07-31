@@ -101,7 +101,20 @@
     "report_date": "2026-05-05",
     "status": "fixed",
     "notes": "Crew: N · Contacto: Cesar",
-    "photos": [],
+    "photos": [
+      {
+        "date": "2026-05-05",
+        "path": "photos/1784674078804-bulk1/2026-05-05_ms95gyw00.jpg"
+      },
+      {
+        "date": "2026-05-05",
+        "path": "photos/1784674078804-bulk1/2026-05-05_ms95h0yl1.jpg"
+      },
+      {
+        "date": "2026-05-05",
+        "path": "photos/1784674078804-bulk1/2026-05-05_ms95h30e2.jpg"
+      }
+    ],
     "logged_at": "2026-07-21T00:00:00Z",
     "num": 5
   },
@@ -203,6 +216,14 @@
       {
         "date": "2026-05-11",
         "path": "photos/1784674078806-bulk3/2026-05-11_ms95bepr0.jpg"
+      },
+      {
+        "date": "2026-05-11",
+        "path": "photos/1784674078806-bulk3/2026-05-11_ms95brgv0.jpg"
+      },
+      {
+        "date": "2026-05-11",
+        "path": "photos/1784674078806-bulk3/2026-05-11_ms95c5qx0.jpg"
       }
     ],
     "logged_at": "2026-07-21T00:00:00Z",
