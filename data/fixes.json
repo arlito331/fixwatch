@@ -199,7 +199,12 @@
     "report_date": "2026-05-11",
     "status": "fixed",
     "notes": "Crew: N · Contacto: Baquero · OJO: coordenadas iguales a Arraijan en la hoja - verificar",
-    "photos": [],
+    "photos": [
+      {
+        "date": "2026-05-11",
+        "path": "photos/1784674078806-bulk3/2026-05-11_ms95bepr0.jpg"
+      }
+    ],
     "logged_at": "2026-07-21T00:00:00Z",
     "num": 8
   },
@@ -266,6 +271,10 @@
       {
         "date": "2026-07-02",
         "path": "photos/1784680618808-n5gsgi/2026-07-02_ms95534d0.jpg"
+      },
+      {
+        "date": "2026-07-10",
+        "path": "photos/1784680618808-n5gsgi/2026-07-10_ms955o5c0.jpg"
       }
     ],
     "logged_at": "2026-07-22T00:36:58.808Z",
