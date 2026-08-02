@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0D0D0D"/>
@@ -12,10 +12,12 @@
 <style>
 :root{ --bg:#0D0D0D; --panel:#1A1A1B; --border:#262626; --text:#fff; --muted:#999; --dim:#555; --accent:#46C97E; --blue:#3F7FE0; --red:#FF3B3B; --orange:#F0A030; }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,Helvetica,Arial,sans-serif;min-height:100vh;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,Helvetica,Arial,sans-serif;min-height:100vh;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+input,select,textarea,button{touch-action:manipulation;}
 a{color:inherit;}
 
-.header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--panel);}
+.header{display:flex;align-items:center;gap:12px;padding:14px 20px;padding-top:calc(14px + env(safe-area-inset-top));border-bottom:1px solid var(--border);background:var(--panel);}
 .header-text{flex:1;min-width:0;}
 .header-eyebrow{font-size:9px;letter-spacing:3px;color:var(--accent);font-weight:700;margin-bottom:3px;}
 .header-title{font-size:16px;font-weight:700;}
@@ -137,7 +139,13 @@ a{color:inherit;}
 .ph-item{display:flex;flex-direction:column;gap:4px;align-items:center;}
 .ph-date{background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 5px;font-size:10px;outline:none;width:110px;}
 .ph-date.dirty{border-color:var(--orange);color:var(--orange);}
-.footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;}
+.footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));}
+
+/* Touch devices at any width/orientation: 16px inputs stop iOS from
+   auto-zooming into a focused field (its threshold is 16px). */
+@media (pointer: coarse){
+  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date]{font-size:16px;}
+}
 
 /* iPhone / small screens */
 @media (max-width: 640px){
@@ -1453,7 +1461,7 @@ initListMap();
 loadFixes();
 </script>
 <style>
-#hubBtn{position:fixed;bottom:18px;right:18px;z-index:9999;width:42px;height:42px;border-radius:50%;background:#E8442A;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.45);opacity:.9;transition:transform .15s,opacity .15s;}
+#hubBtn{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));right:18px;z-index:9999;width:42px;height:42px;border-radius:50%;background:#E8442A;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.45);opacity:.9;transition:transform .15s,opacity .15s;}
 #hubBtn:hover{transform:scale(1.08);opacity:1;}
 #hubBtn svg{width:19px;height:19px;}
 </style>
