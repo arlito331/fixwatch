@@ -126,7 +126,24 @@
     "report_date": "2026-04-21",
     "status": "fixed",
     "notes": "Crew: AA, JK, N · MOP - Rodolfo y Ingeniera",
-    "photos": [],
+    "photos": [
+      {
+        "date": "2026-04-21",
+        "path": "photos/1784674078803-bulk0/2026-04-21_msevr2yu0.jpg"
+      },
+      {
+        "date": "2026-05-25",
+        "path": "photos/1784674078803-bulk0/2026-05-25_msevr4je1.jpg"
+      },
+      {
+        "date": "2026-08-04",
+        "path": "photos/1784674078803-bulk0/2026-08-04_msevr6032.jpg"
+      },
+      {
+        "date": "2026-08-04",
+        "path": "photos/1784674078803-bulk0/2026-08-04_msevr79t3.jpg"
+      }
+    ],
     "logged_at": "2026-07-21T00:00:00Z",
     "num": 4
   },
