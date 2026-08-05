@@ -576,9 +576,9 @@
     "label": "Avenida Samborondón",
     "country": "Ecuador",
     "city": "Samborondón",
-    "fix_date": null,
+    "fix_date": "2026-08-05",
     "report_date": "2026-08-05",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
@@ -588,6 +588,14 @@
       {
         "date": "2026-08-05",
         "path": "photos/1785957644634-37pjzl/2026-08-05_msgh2lm71.jpg"
+      },
+      {
+        "date": "2026-08-05",
+        "path": "photos/1785957644634-37pjzl/2026-08-05_msgi1qvj0.jpg"
+      },
+      {
+        "date": "2026-08-05",
+        "path": "photos/1785957644634-37pjzl/2026-08-05_msgi1sfu1.jpg"
       }
     ],
     "logged_at": "2026-08-05T19:20:44.644Z",
