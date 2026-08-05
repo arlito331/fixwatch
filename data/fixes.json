@@ -568,5 +568,29 @@
     "alt": 17.9,
     "speed_kmh": 0,
     "num": 16
+  },
+  {
+    "id": "1785957644634-37pjzl",
+    "lat": -2.1529244,
+    "lng": -79.8654594,
+    "label": "Avenida Samborondón",
+    "country": "Ecuador",
+    "city": "Samborondón",
+    "fix_date": null,
+    "report_date": "2026-08-05",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-05",
+        "path": "photos/1785957644634-37pjzl/2026-08-05_msgh2j490.jpg"
+      },
+      {
+        "date": "2026-08-05",
+        "path": "photos/1785957644634-37pjzl/2026-08-05_msgh2lm71.jpg"
+      }
+    ],
+    "logged_at": "2026-08-05T19:20:44.644Z",
+    "num": 17
   }
 ]
