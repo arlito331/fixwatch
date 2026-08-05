@@ -576,9 +576,9 @@
     "label": "Avenida Samborondón",
     "country": "Ecuador",
     "city": "Samborondón",
-    "fix_date": "2026-08-05",
+    "fix_date": null,
     "report_date": "2026-08-05",
-    "status": "fixed",
+    "status": "reported",
     "notes": "",
     "photos": [
       {
