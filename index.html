@@ -255,8 +255,8 @@ a{color:inherit;}
   <div class="card">
     <div class="field">
       <label>Photos of the pothole (required — 1 to 3)</label>
-      <input id="fPhotos" type="file" accept="image/*" multiple onchange="photoCountHint()"/>
-      <div class="field-hint" id="fPhotosHint">At least 1 photo is required to report a pothole, up to a maximum of 3. These are the "before" photos — the report shows as a red dot until it's marked fixed.</div>
+      <input id="fPhotos" type="file" accept="image/*,video/*" multiple onchange="photoCountHint()"/>
+      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -639,6 +639,46 @@ async function bestPhotoDateTime(file){
 }
 async function bestPhotoDate(file){ return (await bestPhotoDateTime(file)).date; }
 
+// ---------- video → still frame ----------
+// Some reports arrive as a video. Grab one clear frame (~1s in, or a quarter
+// through for very short clips) and hand it to the normal photo pipeline as a
+// JPEG, keeping the video's file date so the stamp is right.
+function videoToImageFile(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    let done = false;
+    const fail = m => { if (done) return; done = true; URL.revokeObjectURL(url); reject(new Error(m)); };
+    v.onloadedmetadata = () => {
+      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
+      v.currentTime = Math.min(1, d * 0.25);
+    };
+    v.onseeked = () => {
+      if (done) return;
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0);
+        c.toBlob(blob => {
+          if (!blob) return fail('could not read video frame');
+          done = true; URL.revokeObjectURL(url);
+          const base = (file.name || 'video').replace(/\.[^.]+$/, '');
+          resolve(new File([blob], base + '.jpg', {type: 'image/jpeg', lastModified: file.lastModified || Date.now()}));
+        }, 'image/jpeg', 0.92);
+      } catch (e){ fail('could not read video frame'); }
+    };
+    v.onerror = () => fail('could not read video');
+    v.src = url;
+  });
+}
+function isVideo(file){ return (file.type || '').startsWith('video/') || /\.(mp4|mov|m4v|avi|webm|3gp|mkv)$/i.test(file.name || ''); }
+// Turn a picked file into a photo file: extract a frame if it's a video.
+async function asImageFile(file, progressCb){
+  if (isVideo(file)){ progressCb && progressCb('Grabbing a frame from the video…'); return videoToImageFile(file); }
+  return file;
+}
+
 // ---------- staged update photos (one date per photo) ----------
 const staged = {};
 async function stageFiles(fixId){
@@ -648,13 +688,21 @@ async function stageFiles(fixId){
   const files = Array.from(input.files);
   staged[fixId] = [];
   listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
-  for (const f of files){
+  for (const f0 of files){
+    let f;
+    try { f = await asImageFile(f0); }
+    catch (e){
+      const err = document.createElement('div');
+      err.className = 'stage-row'; err.style.color = 'var(--red)';
+      err.textContent = `⚠ Couldn't read ${f0.name || 'that file'} — skipped.`;
+      listEl.appendChild(err); continue;
+    }
     const {date, time} = await bestPhotoDateTime(f);
     const i = staged[fixId].length;
     staged[fixId].push({file: f, date, time});
     const row = document.createElement('div');
     row.className = 'stage-row';
-    row.innerHTML = `<span class="sr-name">📷 ${esc(f.name)}</span>
+    row.innerHTML = `<span class="sr-name">${isVideo(f0) ? '🎬' : '📷'} ${esc(f0.name)}</span>
       <input type="date" value="${date}" onclick="event.stopPropagation()"
         onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
       <span class="sr-day">Day ${dayNumber(fix, date)}</span>`;
@@ -821,13 +869,14 @@ function photoCountHint(){
   const hint = document.getElementById('fPhotosHint');
   if (!n){
     hint.style.color = '';
-    hint.textContent = 'At least 1 photo is required to report a pothole, up to a maximum of 3. These are the "before" photos — the report shows as a red dot until it\'s marked fixed.';
+    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically.';
   } else if (n > 3){
     hint.style.color = 'var(--red)';
-    hint.textContent = `${n} photos selected — the maximum is 3. Remove some before reporting.`;
+    hint.textContent = `${n} files selected — the maximum is 3. Remove some before reporting.`;
   } else {
+    const vids = [...document.getElementById('fPhotos').files].filter(isVideo).length;
     hint.style.color = 'var(--accent)';
-    hint.textContent = `${n}/3 photo(s) selected ✓`;
+    hint.textContent = `${n}/3 selected ✓${vids ? ` — ${vids} video(s) will become a still` : ''}`;
   }
 }
 
@@ -852,11 +901,11 @@ async function logFix(){
   }
   const photoInput = document.getElementById('fPhotos');
   if (!photoInput.files.length){
-    msg.className = 'err'; msg.textContent = 'Add at least one photo of the pothole — a report needs a picture.';
+    msg.className = 'err'; msg.textContent = 'Add at least one photo or video of the pothole — a report needs a picture.';
     return;
   }
   if (photoInput.files.length > 3){
-    msg.className = 'err'; msg.textContent = `Maximum 3 photos per report — you selected ${photoInput.files.length}. Remove some and try again.`;
+    msg.className = 'err'; msg.textContent = `Maximum 3 files per report — you selected ${photoInput.files.length}. Remove some and try again.`;
     return;
   }
 
@@ -885,7 +934,8 @@ async function logFix(){
   try {
     const items = [];
     for (const f of Array.from(photoInput.files)){
-      items.push({file: f, date: dateVal, time: (await bestPhotoDateTime(f)).time});
+      const img = await asImageFile(f, t => { msg.textContent = t; });
+      items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
     }
     entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
     msg.textContent = 'Saving…';
@@ -1403,7 +1453,7 @@ function renderMapAndList(){
         ${timeline}
         <div class="tl-actions">
           ${statusActions}
-          <input type="file" id="upFiles-${f.id}" accept="image/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
+          <input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
           ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
