@@ -228,7 +228,7 @@ a{color:inherit;}
     <div class="login-sub">Ask Ariel for your user and password. They stay saved in this browser — you only do this once.</div>
     <div class="field">
       <label>User</label>
-      <input id="lgUser" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="master · rd · ecuador · guatemala · factory"/>
+      <input id="lgUser" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="master · rd · ecuador · guatemala · korea"/>
     </div>
     <div class="field">
       <label>Password / access code</label>
@@ -244,7 +244,7 @@ a{color:inherit;}
 </div>
 
 <div class="trial-banner" id="trialBanner">
-  <b>Tryout mode</b> — browse every pothole and log your own trial reports. Trial reports stay on this device only and self-delete after 48 hours; they never touch the real database.
+  <b>Tryout mode</b><span id="trialWhere"></span> — browse potholes, add photos, and log your own reports. Everything you add stays on this device only and self-deletes after 48 hours; the real database is never changed.
 </div>
 
 <div class="tabs">
@@ -368,8 +368,28 @@ function isField(){ return localStorage.getItem('fw_role') === 'field'; }
 // Tryout codes carry no GitHub token: real data loads read-only from the
 // public copy, and reports go to this device only (48h self-delete below).
 // Future territory codes (RD, Ecuador, …) slot in here the same way.
-const TRIAL_CODES = { 'FACTORY-2026': 'factory' };
-function isFactory(){ return localStorage.getItem('fw_role') === 'factory'; }
+// Tryout accounts (the Korea factory): plain user + password, no GitHub
+// credential of any kind. Each person gets their own password so one can be
+// retired without disturbing the others. Everything they log stays on their
+// own device and self-deletes after 48h.
+// Each entry: who may sign in, which passwords are valid, and which country
+// they are limited to (none = sees every country). Add or retire a person by
+// changing a password pattern here — nothing else in the app needs touching.
+const TRYOUT_USERS = {
+  'korea':     {pass: /^frank\d+$/i,     country: null},
+  'factory':   {pass: /^frank\d+$/i,     country: null},   // old name kept working
+  'rd':        {pass: /^rd\d+$/i,        country: 'República Dominicana'},
+  'ecuador':   {pass: /^ecuador\d+$/i,   country: 'Ecuador'},
+  'guatemala': {pass: /^guatemala\d+$/i, country: 'Guatemala'},
+};
+function tryoutMatch(user, pass){
+  const u = TRYOUT_USERS[user];
+  return u && u.pass.test(pass) ? u : null;
+}
+// Real GitHub codes all start with gh… — used to tell a staff code apart from
+// a mistyped tryout password instead of accepting nonsense as a credential.
+function looksLikeCode(s){ return /^gh[a-z]_|^github_pat_/i.test(s); }
+function isTryout(){ const r = localStorage.getItem('fw_role'); return r === 'tryout' || r === 'factory'; }
 function isMaster(){ return !!getGhToken() && localStorage.getItem('fw_role') === 'master'; }
 
 // Territory accounts: one country each, may report potholes and add photos,
@@ -386,14 +406,16 @@ const TERRITORIES = {
   'gt':        {country: 'Guatemala', chip: 'GUATEMALA'},
 };
 function isTerritory(){ return localStorage.getItem('fw_role') === 'territory' && !!getGhToken(); }
-function myCountry(){ return isTerritory() ? localStorage.getItem('fw_country') : null; }
+// Country limit applies to both kinds of country account: the staff-code one
+// that writes for real, and the tryout one whose work stays on the device.
+function myCountry(){ return (isTerritory() || isTryout()) ? localStorage.getItem('fw_country') : null; }
 
 function promptToken(){ openLogin(); }
 function openLogin(){
   const back = document.getElementById('loginBack');
   document.getElementById('lgMsg').textContent = '';
   document.getElementById('lgPass').value = '';
-  document.getElementById('lgOut').style.display = (getGhToken() || isFactory()) ? 'inline-block' : 'none';
+  document.getElementById('lgOut').style.display = (getGhToken() || isTryout()) ? 'inline-block' : 'none';
   back.classList.add('open');
   setTimeout(() => document.getElementById('lgUser').focus(), 50);
 }
@@ -402,6 +424,7 @@ function signOut(){
   localStorage.removeItem('fw_gh_token');
   localStorage.removeItem('fw_role');
   localStorage.removeItem('fw_country');
+  localStorage.removeItem('fw_user');
   closeLogin();
   updateGearDot();
   loadFixes();
@@ -412,18 +435,23 @@ function doLogin(){
   const msg = document.getElementById('lgMsg');
   const fail = t => { msg.className = 'login-msg err'; msg.textContent = t; };
 
-  // Tryout: the code itself is the credential, no token involved.
-  if (TRIAL_CODES[pRaw.toUpperCase()] || (u === 'factory' && TRIAL_CODES[pRaw.toUpperCase()])){
+  if (!pRaw) return fail('Enter your password.');
+
+  // Tryout: user + password only, no code of any kind involved.
+  const tr = tryoutMatch(u, pRaw);
+  if (tr){
     localStorage.removeItem('fw_gh_token');
-    localStorage.removeItem('fw_country');
-    localStorage.setItem('fw_role', 'factory');
+    localStorage.setItem('fw_role', 'tryout');
+    localStorage.setItem('fw_user', pRaw.toLowerCase());
+    if (tr.country) localStorage.setItem('fw_country', tr.country);
+    else localStorage.removeItem('fw_country');
     closeLogin(); updateGearDot(); loadFixes();
     return;
   }
-  if (u === 'factory') return fail('That tryout code is not right.');
-  if (!pRaw) return fail('Enter your password.');
+  // A known tryout name with a staff code still gets full country access.
+  if (TRYOUT_USERS[u] && !looksLikeCode(pRaw)) return fail('That password is not right.');
 
-  const terr = TERRITORIES[u];
+  const terr = TERRITORIES[u] || (TRYOUT_USERS[u] && TRYOUT_USERS[u].country ? {country: TRYOUT_USERS[u].country} : null);
   if (terr){
     setGhToken(pRaw);
     localStorage.setItem('fw_role', 'territory');
@@ -444,7 +472,7 @@ function doLogin(){
   loadFixes();
 }
 function updateGearDot(){
-  const has = !!getGhToken() || isFactory();
+  const has = !!getGhToken() || isTryout();
   document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
   const chip = document.getElementById('roleChip');
@@ -455,13 +483,16 @@ function updateGearDot(){
   } else if (getGhToken() && isField()){
     chip.style.display = 'inline-block'; chip.textContent = 'FIELD';
     chip.title = 'Field access: report potholes and add photos only';
-  } else if (isFactory()){
-    chip.style.display = 'inline-block'; chip.textContent = 'TRYOUT';
+  } else if (isTryout()){
+    const who = localStorage.getItem('fw_user');
+    chip.style.display = 'inline-block'; chip.textContent = who ? `TRYOUT · ${who.toUpperCase()}` : 'TRYOUT';
     chip.title = 'Tryout access: browse everything; your reports stay on this device and self-delete after 48h';
   } else {
     chip.style.display = 'none'; chip.textContent = ''; chip.title = '';
   }
-  document.getElementById('trialBanner').style.display = isFactory() ? 'block' : 'none';
+  document.getElementById('trialBanner').style.display = isTryout() ? 'block' : 'none';
+  const where = document.getElementById('trialWhere');
+  if (where) where.textContent = (isTryout() && myCountry()) ? ` · ${myCountry()}` : '';
   applyTerritoryUI();
 }
 
@@ -499,6 +530,58 @@ function removeTrialFix(id){
   fixes = fixes.filter(f => f.id !== id);
   if (openFixId === id) openFixId = null;
   renderMapAndList();
+}
+
+// Photos a tryout user adds to a real pothole: same 48h device-only rule,
+// stored per pothole and stitched into the timeline at load.
+const TRIAL_PHOTOS_KEY = 'fw_trial_photos';
+function loadTrialPhotos(){
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(TRIAL_PHOTOS_KEY)) || {}; } catch (e){}
+  let changed = false;
+  Object.keys(map).forEach(id => {
+    const keep = map[id].filter(p => Date.now() - new Date(p.trial_created).getTime() < TRIAL_TTL_MS);
+    if (keep.length !== map[id].length) changed = true;
+    if (keep.length) map[id] = keep; else delete map[id];
+  });
+  if (changed) localStorage.setItem(TRIAL_PHOTOS_KEY, JSON.stringify(map));
+  return map;
+}
+function saveTrialPhotos(map){ localStorage.setItem(TRIAL_PHOTOS_KEY, JSON.stringify(map)); }
+function attachTrialPhotos(){
+  const map = loadTrialPhotos();
+  fixes.forEach(f => {
+    const extra = map[f.id];
+    if (extra && !f.trial) f.photos = (f.photos || []).concat(extra);
+  });
+}
+function removeTrialPhoto(fixId, tid){
+  const map = loadTrialPhotos();
+  if (map[fixId]){
+    map[fixId] = map[fixId].filter(p => p.tid !== tid);
+    if (!map[fixId].length) delete map[fixId];
+    saveTrialPhotos(map);
+  }
+  const fix = fixes.find(f => f.id === fixId);
+  if (fix) fix.photos = fix.photos.filter(p => p.tid !== tid);
+  renderMapAndList();
+}
+
+// Stamp + compress locally, exactly like a real upload, but keep the result
+// on this device instead of sending it anywhere.
+async function makeLocalPhotos(fix, items, progressCb){
+  progressCb && progressCb('Preparing stamp…');
+  const addr = await stampAddress(fix);
+  const out = [];
+  for (let i = 0; i < items.length; i++){
+    const {file, date, time} = items[i];
+    progressCb && progressCb(`Processing photo ${i+1}/${items.length}…`);
+    const stamp = {lat: fix.lat, lng: fix.lng, lines: buildStampLines(fix, addr, date, time)};
+    const b64 = await compressImage(file, stamp, 1024, 0.72);
+    out.push({date, dataUrl: 'data:image/jpeg;base64,' + b64, trial: true,
+      tid: Date.now().toString(36) + i, trial_created: new Date().toISOString()});
+  }
+  return out;
 }
 
 // A 401 from GitHub means the stored access code expired or was revoked.
@@ -973,7 +1056,9 @@ async function commitFixes(message){
   else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
   else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
 
-  let out = fixes.filter(f => !f.trial);
+  // Never let device-only trial content reach the real file.
+  let out = fixes.filter(f => !f.trial)
+    .map(f => (f.photos || []).some(p => p.trial) ? {...f, photos: f.photos.filter(p => !p.trial)} : f);
   // A territory account only holds its own country in memory, so writing that
   // list straight out would erase every other country. Merge instead: their
   // records overwrite, everyone else's pass through untouched.
@@ -1247,7 +1332,7 @@ async function logFix(){
   const btn = document.getElementById('logBtn');
   msg.className = ''; msg.textContent = '';
 
-  if (!getGhToken() && !isFactory()){
+  if (!getGhToken() && !isTryout()){
     msg.className = 'err'; msg.textContent = 'Run the one-time setup first (gear icon, top right).';
     return;
   }
@@ -1299,7 +1384,7 @@ async function logFix(){
       items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
     }
 
-    if (isFactory()){
+    if (isTryout()){
       // Trial report: stamped photos become data URLs and the whole entry
       // stays in this device's localStorage — nothing is sent anywhere.
       msg.textContent = 'Saving trial report…';
@@ -1368,11 +1453,30 @@ async function addUpdate(fixId){
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   msgEl.className = 'row-msg'; msgEl.textContent = '';
 
-  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
-  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  if (!getGhToken() && !isTryout()){ msgEl.className='row-msg err'; msgEl.textContent='Sign in first (gear icon).'; return; }
   const items = staged[fixId] || [];
   if (!items.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
   if (items.some(it => !it.date)){ msgEl.className='row-msg err'; msgEl.textContent='Every photo needs a date.'; return; }
+
+  // Tryout users may add photos to any pothole they can see, but the photos
+  // live on this device only and disappear after 48h.
+  if (isTryout()){
+    try {
+      const added = await makeLocalPhotos(fix, items, t => { msgEl.textContent = t; });
+      const map = loadTrialPhotos();
+      map[fixId] = (map[fixId] || []).concat(added);
+      try { saveTrialPhotos(map); }
+      catch (e){ throw new Error("This device's storage is full — remove some trial photos and try again."); }
+      fix.photos = (fix.photos || []).concat(added);
+      staged[fixId] = [];
+      renderMapAndList();
+      const m = document.getElementById(`upMsg-${fixId}`);
+      if (m){ m.className = 'row-msg ok'; m.textContent = `Added ${added.length} trial photo(s) — on this device only, gone in 48 hours.`; }
+    } catch (e){
+      msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not add the photos.';
+    }
+    return;
+  }
 
   try {
     // Field users add photos without changing status; for masters, an
@@ -1414,7 +1518,7 @@ async function markFixed(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
+  if (isTryout()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const dateEl = document.getElementById(`fixedDate-${fixId}`);
   const date = (dateEl && dateEl.value) || new Date().toISOString().slice(0, 10);
@@ -1434,7 +1538,7 @@ async function reopenFix(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
+  if (isTryout()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const prevDate = fix.fix_date;
   fix.status = 'reported';
@@ -1474,7 +1578,7 @@ async function saveDates(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
+  if (isTryout()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving date changes…';
   try {
@@ -1822,7 +1926,8 @@ function renderMapAndList(){
             ${flat.map((it, idx) => `
               <div class="car-item">
                 <div class="car-day">Day ${it.day}</div>
-                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
+                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>`
+                  : (isTryout() && it.p.trial && !f.trial ? `<button class="ph-del" title="Remove this trial photo" onclick="event.stopPropagation();removeTrialPhoto('${f.id}','${it.p.tid}')">✕</button>` : '')}
                 <img loading="lazy" src="${photoSrc(it.p)}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
                 <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
@@ -1838,8 +1943,11 @@ function renderMapAndList(){
       : `<input type="date" id="fixedDate-${f.id}" value="${new Date().toISOString().slice(0,10)}" onclick="event.stopPropagation()"/>
          <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`);
 
-    const uploadControls = isFactory()
-      ? (f.trial ? `<button class="btn small secondary" onclick="event.stopPropagation();removeTrialFix('${f.id}')">🗑 Remove trial report</button>` : '')
+    const uploadControls = isTryout()
+      ? (f.trial
+          ? `<button class="btn small secondary" onclick="event.stopPropagation();removeTrialFix('${f.id}')">🗑 Remove trial report</button>`
+          : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
+             <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">Add photos (trial)</button>`)
       : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || !isMaster()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
           ${!isMaster() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
@@ -1926,7 +2034,8 @@ async function loadFixes(){
     } catch (e) { loaded = []; }
   }
   fixes = loaded;
-  if (isFactory()) fixes = fixes.concat(loadTrialFixes());
+  if (isTryout()) fixes = fixes.concat(loadTrialFixes());
+  if (isTryout()) attachTrialPhotos();
   // Territory accounts never even hold other countries' records in memory.
   const mine = myCountry();
   if (mine) fixes = fixes.filter(f => fold(normCountry(f.country)) === fold(mine));
