@@ -653,5 +653,25 @@
     ],
     "logged_at": "2026-08-05T19:20:44.644Z",
     "num": 17
+  },
+  {
+    "id": "1786075444555-nty0qd",
+    "lat": 8.954241316223396,
+    "lng": -79.64231729507448,
+    "label": "🚫Monitoreo – Competencia",
+    "country": "Panama",
+    "city": "Arraiján",
+    "fix_date": null,
+    "report_date": "2026-08-07",
+    "status": "reported",
+    "notes": "Alcaldesa Arraijan",
+    "photos": [
+      {
+        "date": "2026-08-07",
+        "path": "photos/1786075444555-nty0qd/2026-08-07_msif7e3t0.jpg"
+      }
+    ],
+    "logged_at": "2026-08-07T04:04:04.562Z",
+    "num": 18
   }
 ]
