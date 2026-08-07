@@ -27,6 +27,8 @@ a{color:inherit;}
 .gear-dot{position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:var(--red);}
 .gear-dot.ok{background:var(--accent);}
 .role-chip{flex-shrink:0;background:rgba(63,127,224,.15);border:1px solid rgba(63,127,224,.5);color:#7fa8e8;font-size:9px;font-weight:800;letter-spacing:1.5px;border-radius:5px;padding:4px 8px;}
+.trial-banner{display:none;background:rgba(240,160,48,.12);border-bottom:1px solid rgba(240,160,48,.4);color:#e8b968;font-size:11px;line-height:1.5;padding:9px 16px;}
+.trial-chip{display:inline-block;margin-left:8px;background:rgba(240,160,48,.15);border:1px solid rgba(240,160,48,.5);color:var(--orange);font-size:9px;font-weight:800;letter-spacing:1px;border-radius:5px;padding:2px 7px;vertical-align:1px;}
 
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);padding:0 20px;}
 .tab-btn{padding:14px 4px;margin-right:28px;background:none;border:none;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;}
@@ -104,7 +106,11 @@ a{color:inherit;}
 .car-btn:hover{color:var(--text);border-color:#3a3a3a;}
 .car-track{display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;flex:1;min-width:0;padding:2px 0;}
 .car-track::-webkit-scrollbar{display:none;}
-.car-item{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:center;}
+.car-item{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:center;position:relative;}
+.ph-del{position:absolute;top:22px;right:4px;z-index:2;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#ff8080;font-size:12px;font-weight:800;cursor:pointer;line-height:1;}
+.ph-del:hover{background:var(--red);color:#fff;}
+.btn.danger{background:var(--red);color:#fff;}
+.edit-form{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;}
 .car-day{font-size:11px;font-weight:800;color:var(--accent);}
 .car-item img{width:150px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
 .car-item img:hover{transform:scale(1.05);}
@@ -202,10 +208,14 @@ a{color:inherit;}
     <div class="header-title">Pothole Reporting &amp; Fix Tracker</div>
     <div class="header-sub">Report a pothole with a photo and exact location — red until it's fixed, green once repaired.</div>
   </div>
-  <span id="roleChip" class="role-chip" style="display:none;" title="Field access: report potholes and add photos only">FIELD</span>
+  <span id="roleChip" class="role-chip" style="display:none;"></span>
   <button class="gear-btn" onclick="promptToken()" title="One-time setup">
     ⚙️<span id="gearDot" class="gear-dot"></span>
   </button>
+</div>
+
+<div class="trial-banner" id="trialBanner">
+  <b>Tryout mode</b> — browse every pothole and log your own trial reports. Trial reports stay on this device only and self-delete after 48 hours; they never touch the real database.
 </div>
 
 <div class="tabs">
@@ -326,10 +336,24 @@ let openFixId = null;
 function getGhToken(){ return localStorage.getItem('fw_gh_token'); }
 function setGhToken(t){ localStorage.setItem('fw_gh_token', t); }
 function isField(){ return localStorage.getItem('fw_role') === 'field'; }
+// Tryout codes carry no GitHub token: real data loads read-only from the
+// public copy, and reports go to this device only (48h self-delete below).
+// Future territory codes (RD, Ecuador, …) slot in here the same way.
+const TRIAL_CODES = { 'FACTORY-2026': 'factory' };
+function isFactory(){ return localStorage.getItem('fw_role') === 'factory'; }
+function isMaster(){ return !!getGhToken() && !isField() && !isFactory(); }
 function promptToken(){
   const t = prompt('One-time setup\n\nPaste your access code here (ask Ariel for it).\nIt stays saved in this browser — you only do this once.\n\nMaster code: full control.\nField code (starts with "field:"): report potholes and add photos only.');
   if (t){
     let v = t.trim(), role = 'master';
+    const trialRole = TRIAL_CODES[v.toUpperCase()];
+    if (trialRole){
+      localStorage.removeItem('fw_gh_token');
+      localStorage.setItem('fw_role', trialRole);
+      updateGearDot();
+      loadFixes();
+      return;
+    }
     if (/^field:/i.test(v)){ role = 'field'; v = v.replace(/^field:/i, '').trim(); }
     setGhToken(v);
     localStorage.setItem('fw_role', role);
@@ -338,10 +362,41 @@ function promptToken(){
   }
 }
 function updateGearDot(){
-  const has = !!getGhToken();
+  const has = !!getGhToken() || isFactory();
   document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
-  document.getElementById('roleChip').style.display = (has && isField()) ? 'inline-block' : 'none';
+  const chip = document.getElementById('roleChip');
+  if (getGhToken() && isField()){
+    chip.style.display = 'inline-block'; chip.textContent = 'FIELD';
+    chip.title = 'Field access: report potholes and add photos only';
+  } else if (isFactory()){
+    chip.style.display = 'inline-block'; chip.textContent = 'TRYOUT';
+    chip.title = 'Tryout access: browse everything; your reports stay on this device and self-delete after 48h';
+  } else {
+    chip.style.display = 'none';
+  }
+  document.getElementById('trialBanner').style.display = isFactory() ? 'block' : 'none';
+}
+
+// ---------- tryout trial reports — this device only, self-delete after 48h ----------
+const TRIAL_TTL_MS = 48 * 3600 * 1000;
+const TRIAL_KEY = 'fw_trial_fixes';
+function loadTrialFixes(){
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(TRIAL_KEY)) || []; } catch (e){}
+  const keep = list.filter(f => Date.now() - new Date(f.trial_created).getTime() < TRIAL_TTL_MS);
+  if (keep.length !== list.length) saveTrialFixes(keep);
+  return keep;
+}
+function saveTrialFixes(list){ localStorage.setItem(TRIAL_KEY, JSON.stringify(list)); }
+function trialHoursLeft(f){
+  return Math.max(1, Math.ceil((TRIAL_TTL_MS - (Date.now() - new Date(f.trial_created).getTime())) / 3600000));
+}
+function removeTrialFix(id){
+  saveTrialFixes(loadTrialFixes().filter(f => f.id !== id));
+  fixes = fixes.filter(f => f.id !== id);
+  if (openFixId === id) openFixId = null;
+  renderMapAndList();
 }
 
 // A 401 from GitHub means the stored access code expired or was revoked.
@@ -368,20 +423,51 @@ async function ghFetch(url, opts={}){
   });
 }
 
+// Rapid back-to-back commits (each photo file, then fixes.json) sometimes
+// race on the branch and GitHub answers 409/422 even though nothing is
+// wrong — retrying with a fresh sha after a short pause heals it. Without
+// this, the second photo of an upload "failed" while actually being saved.
 async function ghPutFile(path, b64, message, sha){
-  const res = await ghFetch(API_BASE + path, {
-    method: 'PUT',
-    body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
-  });
-  if (res.status === 401){
-    markTokenExpired();
-    throw new Error(TOKEN_EXPIRED_MSG);
-  }
-  if (!res.ok){
+  for (let attempt = 0; ; attempt++){
+    const res = await ghFetch(API_BASE + path, {
+      method: 'PUT',
+      body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
+    });
+    if (res.ok) return res.json();
+    if (res.status === 401){
+      markTokenExpired();
+      throw new Error(TOKEN_EXPIRED_MSG);
+    }
+    if ((res.status === 409 || res.status === 422) && attempt < 3){
+      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+      const g = await ghFetch(`${API_BASE}${path}?ref=main`);
+      if (g.ok) sha = (await g.json()).sha;
+      continue;
+    }
     const e = await res.json().catch(() => ({}));
     throw new Error(e.message || `save failed (${res.status})`);
   }
-  return res.json();
+}
+
+async function ghDeleteFile(path, message){
+  const g = await ghFetch(`${API_BASE}${path}?ref=main`);
+  if (g.status === 404) return; // already gone
+  if (g.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
+  if (!g.ok) throw new Error(`read failed (${g.status})`);
+  const sha = (await g.json()).sha;
+  for (let attempt = 0; ; attempt++){
+    const res = await ghFetch(API_BASE + path, {
+      method: 'DELETE',
+      body: JSON.stringify({message, sha, branch: 'main'}),
+    });
+    if (res.ok || res.status === 404) return;
+    if ((res.status === 409 || res.status === 422) && attempt < 3){
+      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+      continue;
+    }
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `delete failed (${res.status})`);
+  }
 }
 
 // ---------- tabs ----------
@@ -417,6 +503,9 @@ function fixNum(f){
   return order.findIndex(x => x.id === f.id) + 1;
 }
 function fixTag(f){ return 'LP-' + String(fixNum(f)).padStart(3, '0'); }
+
+// Trial photos live on this device as data URLs; real ones are repo paths.
+function photoSrc(p){ return p.dataUrl || RAW_BASE + p.path; }
 
 // ---------- image compression + GPS-camera-style stamp ----------
 function loadImg(src){
@@ -530,12 +619,28 @@ async function drawMapInset(ctx, W, H, lat, lng){
   ctx.strokeRect(x0 + 1, y0 + 1, iw - 2, ih - 2);
 }
 
-async function drawStamp(ctx, W, H, stamp){
-  await drawMapInset(ctx, W, H, stamp.lat, stamp.lng);
+// Shared layout math for the text block (bottom-right): per-line font size
+// with shrink-to-fit, total width/height. Used by drawing and by re-stamping.
+function stampBlockMetrics(ctx, W, lines){
   const M = Math.round(W * 0.028);
   const insetW = Math.round(W * 0.26);
   const maxLineW = W - insetW - M * 3;
   const base = Math.max(16, Math.round(W * 0.038));
+  let w = 0, h = 0;
+  lines.forEach((ln, i) => {
+    let fs = i === 0 ? Math.round(base * 1.2) : base;
+    ctx.font = `700 ${fs}px Helvetica, Arial`;
+    while (fs > 11 && ctx.measureText(ln).width > maxLineW){
+      fs--; ctx.font = `700 ${fs}px Helvetica, Arial`;
+    }
+    w = Math.max(w, ctx.measureText(ln).width);
+    h += Math.round(fs * 1.22);
+  });
+  return {M, maxLineW, base, w, h};
+}
+
+function drawStampText(ctx, W, H, stamp){
+  const {M, maxLineW, base} = stampBlockMetrics(ctx, W, stamp.lines);
   ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
   let y = H - M;
   for (let i = stamp.lines.length - 1; i >= 0; i--){
@@ -553,6 +658,49 @@ async function drawStamp(ctx, W, H, stamp){
   ctx.textAlign = 'left';
 }
 
+async function drawStamp(ctx, W, H, stamp){
+  await drawMapInset(ctx, W, H, stamp.lat, stamp.lng);
+  drawStampText(ctx, W, H, stamp);
+}
+
+// Re-stamp a photo whose inspection date was edited. The pixels under the
+// old stamp are gone, so the fresh stamp sits on a dark plaque that covers
+// the old text block; the repo file is replaced (new path, old one deleted).
+async function restampPhoto(fix, p, oldDate){
+  let src = null;
+  try { // API copy is always fresh; the raw CDN can lag minutes behind
+    const r = await ghFetch(`${API_BASE}${p.path}?ref=main`);
+    if (r.ok) src = 'data:image/jpeg;base64,' + (await r.json()).content.replace(/\n/g, '');
+  } catch (e){}
+  const img = await loadImg(src || RAW_BASE + p.path);
+  const W = img.width, H = img.height;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const addr = await stampAddress(fix);
+  const newLines = buildStampLines(fix, addr, p.date, p.time || null);
+  // Old block may be wider (it can carry a time we never stored) — size the
+  // plaque to the worst case of both so no old text peeks out.
+  const oldLines = buildStampLines(fix, addr, oldDate, p.time || '00:00:00');
+  const a = stampBlockMetrics(ctx, W, newLines), b = stampBlockMetrics(ctx, W, oldLines);
+  const M = a.M, pad = Math.round(M * 0.7);
+  const blockW = Math.min(a.maxLineW, Math.max(a.w, b.w)), blockH = Math.max(a.h, b.h);
+  ctx.beginPath();
+  const rx = W - M - blockW - pad, ry = H - M - blockH - pad, rw = blockW + pad * 2, rh = blockH + pad * 2 + Math.round(M * 0.3);
+  if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, Math.round(M * 0.4)); else ctx.rect(rx, ry, rw, rh);
+  // Near-opaque: the old white text must not ghost through the plaque
+  ctx.fillStyle = 'rgba(14,14,14,.97)';
+  ctx.fill();
+  drawStampText(ctx, W, H, {lat: fix.lat, lng: fix.lng, lines: newLines});
+  const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r.jpg`;
+  await ghPutFile(newPath, b64, `re-stamp photo: ${fix.label || fix.id} (${oldDate} → ${p.date})`);
+  const oldPath = p.path;
+  p.path = newPath;
+  await ghDeleteFile(oldPath, `remove old-date photo: ${fix.label || fix.id}`).catch(() => {});
+}
+
 async function uploadPhotoItems(fix, items, progressCb){
   progressCb && progressCb('Preparing stamp…');
   const addr = await stampAddress(fix);
@@ -564,7 +712,8 @@ async function uploadPhotoItems(fix, items, progressCb){
     const b64 = await compressImage(file, stamp);
     const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
     await ghPutFile(path, b64, `photo: ${fix.label || fix.id} day ${dayNumber(fix, date)}`);
-    added.push({date, path});
+    // time is kept so a later date edit can rebuild the stamp's datetime line
+    added.push({date, path, ...(time ? {time} : {})});
   }
   return added;
 }
@@ -717,8 +866,102 @@ async function commitFixes(message){
   if (getRes.ok){ sha = (await getRes.json()).sha; }
   else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
   else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(fixes, null, 2))));
+  // _-prefixed keys are transient UI state (e.g. _oldDate) — never persisted
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(fixes, (k, v) => k.startsWith('_') ? undefined : v, 2))));
   await ghPutFile(DATA_PATH, b64, message, sha);
+}
+
+// ---------- share location ----------
+function shareLoc(fixId, app){
+  const f = fixes.find(x => x.id === fixId);
+  if (!f) return;
+  const url = app === 'waze'
+    ? `https://waze.com/ul?ll=${f.lat},${f.lng}&navigate=yes`
+    : `https://www.google.com/maps/search/?api=1&query=${f.lat}%2C${f.lng}`;
+  window.open(url, '_blank');
+}
+function shareLocSheet(fixId){
+  const f = fixes.find(x => x.id === fixId);
+  if (!f) return;
+  navigator.share({
+    title: `${fixTag(f)} · ${f.label || 'Pothole'}`,
+    text: `${f.label || 'Pothole'} — ${[f.city, f.country].filter(Boolean).join(', ')}`,
+    url: `https://www.google.com/maps/search/?api=1&query=${f.lat}%2C${f.lng}`,
+  }).catch(() => {});
+}
+
+// ---------- master editing: fields, photo delete, pothole delete ----------
+let editFixId = null;
+function startFixEdit(fixId){ editFixId = fixId; openFixId = fixId; renderMapAndList(); }
+function cancelFixEdit(){ editFixId = null; renderMapAndList(); }
+
+async function saveFixEdits(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  const val = id => { const el = document.getElementById(`${id}-${fixId}`); return el ? el.value.trim() : null; };
+  const report = val('eReport');
+  if (!report){ msgEl.className = 'row-msg err'; msgEl.textContent = 'The report date cannot be empty.'; return; }
+  const prev = {label: fix.label, country: fix.country, city: fix.city, notes: fix.notes, report_date: fix.report_date, fix_date: fix.fix_date};
+  fix.label = val('eLabel');
+  fix.country = normCountry(val('eCountry'));
+  fix.city = val('eCity');
+  fix.notes = val('eNotes');
+  fix.report_date = report;
+  if (isFixed(fix) && val('eFix')) fix.fix_date = val('eFix');
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
+  try {
+    await commitFixes(`edit info: ${fix.label || fix.id}`);
+    editFixId = null;
+    renderMapAndList();
+  } catch (e) {
+    Object.assign(fix, prev);
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+async function deletePhoto(fixId, flatIdx){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const flat = [];
+  photoGroups(fix).forEach(g => g.photos.forEach(p => flat.push(p)));
+  const p = flat[flatIdx];
+  if (!p) return;
+  if (!confirm(`Delete this photo (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting photo…';
+  try {
+    if (p.path) await ghDeleteFile(p.path, `delete photo: ${fix.label || fix.id} (${p.date})`);
+    fix.photos = fix.photos.filter(x => x !== p);
+    await commitFixes(`remove photo: ${fix.label || fix.id} (${p.date})`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = 'Photo deleted.'; }
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not delete.';
+  }
+}
+
+async function deleteFix(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const n = (fix.photos || []).length;
+  if (!confirm(`Permanently delete ${fixTag(fix)} "${fix.label || 'Pothole'}"${n ? ` and its ${n} photo(s)` : ''}?\n\nThis cannot be undone.`)) return;
+  if (!confirm(`Really delete ${fixTag(fix)} forever? Last chance.`)) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting…';
+  try {
+    for (const p of (fix.photos || [])){
+      if (p.path) await ghDeleteFile(p.path, `delete photo of removed pothole ${fixTag(fix)}`);
+    }
+    fixes = fixes.filter(f => f.id !== fixId);
+    await commitFixes(`deleted pothole: ${fix.label || fix.id}`);
+    if (openFixId === fixId) openFixId = null;
+    editFixId = null;
+    renderMapAndList();
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not delete.';
+  }
 }
 
 // ---------- pick map ----------
@@ -886,7 +1129,7 @@ async function logFix(){
   const btn = document.getElementById('logBtn');
   msg.className = ''; msg.textContent = '';
 
-  if (!getGhToken()){
+  if (!getGhToken() && !isFactory()){
     msg.className = 'err'; msg.textContent = 'Run the one-time setup first (gear icon, top right).';
     return;
   }
@@ -937,26 +1180,49 @@ async function logFix(){
       const img = await asImageFile(f, t => { msg.textContent = t; });
       items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
     }
-    entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
-    msg.textContent = 'Saving…';
 
-    const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
-    let sha = null, current = [];
-    if (getRes.ok){
-      const data = await getRes.json();
-      sha = data.sha;
-      current = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g,'')))));
-    } else if (getRes.status !== 404){
-      throw new Error(`read failed (${getRes.status})`);
+    if (isFactory()){
+      // Trial report: stamped photos become data URLs and the whole entry
+      // stays in this device's localStorage — nothing is sent anywhere.
+      msg.textContent = 'Saving trial report…';
+      const addr = await stampAddress(entry);
+      entry.photos = [];
+      for (const it of items){
+        const stamp = {lat: entry.lat, lng: entry.lng, lines: buildStampLines(entry, addr, it.date, it.time)};
+        const b64 = await compressImage(it.file, stamp, 1024, 0.72);
+        entry.photos.push({date: it.date, dataUrl: 'data:image/jpeg;base64,' + b64});
+      }
+      entry.trial = true;
+      entry.trial_created = new Date().toISOString();
+      const trials = loadTrialFixes();
+      trials.push(entry);
+      try { saveTrialFixes(trials); }
+      catch (e){ throw new Error("This device's storage is full — remove an older trial report or use fewer photos, then try again."); }
+      fixes.push(entry);
+      renderMapAndList();
+      msg.className = 'ok'; msg.textContent = `Trial report saved with ${entry.photos.length} photo(s) — it lives on this device only and self-deletes in 48 hours.`;
+    } else {
+      entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
+      msg.textContent = 'Saving…';
+
+      const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+      let sha = null, current = [];
+      if (getRes.ok){
+        const data = await getRes.json();
+        sha = data.sha;
+        current = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g,'')))));
+      } else if (getRes.status !== 404){
+        throw new Error(`read failed (${getRes.status})`);
+      }
+      entry.num = current.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
+      current.push(entry);
+      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(current, null, 2))));
+      await ghPutFile(DATA_PATH, b64, `pothole reported: ${entry.label || entry.lat + ',' + entry.lng} (${entry.report_date})`, sha);
+
+      fixes = current;
+      renderMapAndList();
+      msg.className = 'ok'; msg.textContent = `Pothole reported with ${entry.photos.length} photo(s) — it's now a red dot on the map.`;
     }
-    entry.num = current.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
-    current.push(entry);
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(current, null, 2))));
-    await ghPutFile(DATA_PATH, b64, `pothole reported: ${entry.label || entry.lat + ',' + entry.lng} (${entry.report_date})`, sha);
-
-    fixes = current;
-    renderMapAndList();
-    msg.className = 'ok'; msg.textContent = `Pothole reported with ${entry.photos.length} photo(s) — it's now a red dot on the map.`;
 
     document.getElementById('fSearch').value = '';
     document.getElementById('fLabel').value = '';
@@ -983,6 +1249,7 @@ async function addUpdate(fixId){
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   msgEl.className = 'row-msg'; msgEl.textContent = '';
 
+  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const items = staged[fixId] || [];
   if (!items.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
@@ -994,6 +1261,7 @@ async function addUpdate(fixId){
     const wasOpen = !isFixed(fix) && !isField();
     const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
     fix.photos = (fix.photos || []).concat(added);
+    staged[fixId] = []; // photos are up — a retry after a failed save below must not re-upload them
     // Any "after" photo upload on an open pothole marks it fixed — no
     // verification for now, the upload itself is the proof.
     if (wasOpen){
@@ -1004,7 +1272,6 @@ async function addUpdate(fixId){
     await commitFixes(wasOpen
       ? `fixed (after photo): ${fix.label || fix.id} (${fix.fix_date})`
       : `photo update: ${fix.label || fix.id} (+${added.length})`);
-    staged[fixId] = [];
     renderMapAndList();
     const days = [...new Set(added.map(p => dayNumber(fix, p.date)))].sort((a,b) => a-b);
     const m2 = document.getElementById(`upMsg-${fixId}`);
@@ -1015,15 +1282,20 @@ async function addUpdate(fixId){
         : `Added ${added.length} photo(s) — Day ${days.join(', Day ')}.`;
     }
   } catch (e) {
-    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Upload failed.';
+    // Photos that made it up are already in memory — re-render so the list
+    // stays truthful instead of hiding them until the row is reopened.
+    renderMapAndList();
+    const m3 = document.getElementById(`upMsg-${fixId}`);
+    if (m3){ m3.className = 'row-msg err'; m3.textContent = e.message || 'Upload failed.'; }
   }
 }
 
 // ---------- manual Fixed toggle ----------
 async function markFixed(fixId){
-  if (isField()) return;
+  if (isField() || isFactory()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const dateEl = document.getElementById(`fixedDate-${fixId}`);
   const date = (dateEl && dateEl.value) || new Date().toISOString().slice(0, 10);
@@ -1040,9 +1312,10 @@ async function markFixed(fixId){
 }
 
 async function reopenFix(fixId){
-  if (isField()) return;
+  if (isField() || isFactory()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const prevDate = fix.fix_date;
   fix.status = 'reported';
@@ -1066,27 +1339,37 @@ function photoGroups(fix){
 
 // ---------- per-photo date editing on already-uploaded photos ----------
 function photoDateChanged(el){
-  if (isField()) return;
+  if (isField() || isFactory()) return;
   const fix = fixes.find(f => f.id === el.dataset.fix);
   const p = fix && fix.photos.find(x => x.path === el.dataset.path);
   if (!p) return;
+  if (p._oldDate === undefined) p._oldDate = p.date; // remember for the re-stamp
   p.date = el.value;
+  if (p._oldDate === p.date) delete p._oldDate; // changed back to the original
   el.classList.add('dirty');
   const saveBtn = document.getElementById(`saveDates-${fix.id}`);
   if (saveBtn) saveBtn.style.display = 'inline-block';
 }
 
 async function saveDates(fixId){
-  if (isField()) return;
+  if (isField() || isFactory()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
   if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving date changes…';
   try {
+    const changed = (fix.photos || []).filter(p => p._oldDate && p._oldDate !== p.date);
+    for (let i = 0; i < changed.length; i++){
+      msgEl.textContent = `Updating the stamp on photo ${i + 1}/${changed.length}…`;
+      await restampPhoto(fix, changed[i], changed[i]._oldDate);
+    }
+    (fix.photos || []).forEach(p => delete p._oldDate);
+    msgEl.textContent = 'Saving date changes…';
     await commitFixes(`re-date photos: ${fix.label || fix.id}`);
     renderMapAndList();
     const m2 = document.getElementById(`upMsg-${fixId}`);
-    if (m2){ m2.className = 'row-msg ok'; m2.textContent = 'Dates saved.'; }
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = changed.length ? 'Dates saved — photo stamps updated to match.' : 'Dates saved.'; }
   } catch (e) {
     msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
   }
@@ -1134,7 +1417,7 @@ let showTimer = null, lbFrames = [], lbIdx = 0, lbFix = null;
 
 function fixFrames(fix){
   const frames = [];
-  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
+  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({url: photoSrc(p), day: g.day, date: g.date})));
   return frames;
 }
 function showFrame(){
@@ -1183,7 +1466,7 @@ async function exportVideo(fixId, btn){
   const fix = fixes.find(f => f.id === fixId);
   const groups = photoGroups(fix);
   const frames = [];
-  groups.forEach(g => g.photos.forEach(p => frames.push({url: RAW_BASE + p.path, day: g.day, date: g.date})));
+  groups.forEach(g => g.photos.forEach(p => frames.push({url: photoSrc(p), day: g.day, date: g.date})));
   if (!frames.length) return;
 
   btn.disabled = true; const orig = btn.textContent;
@@ -1420,8 +1703,9 @@ function renderMapAndList(){
             ${flat.map((it, idx) => `
               <div class="car-item">
                 <div class="car-day">Day ${it.day}</div>
-                <img loading="lazy" src="${RAW_BASE + it.p.path}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
-                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path)}" ${isField() ? 'disabled' : ''} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
+                <img loading="lazy" src="${photoSrc(it.p)}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
+                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${(isField() || isFactory()) ? 'disabled' : ''} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
           <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
@@ -1430,16 +1714,59 @@ function renderMapAndList(){
 
     const place = [f.city, f.country].filter(Boolean).join(', ');
 
-    const statusActions = isField() ? '' : (fixed
+    const statusActions = (isField() || isFactory()) ? '' : (fixed
       ? `<button class="btn small secondary" onclick="event.stopPropagation();reopenFix('${f.id}')">↩ Reopen</button>`
       : `<input type="date" id="fixedDate-${f.id}" value="${new Date().toISOString().slice(0,10)}" onclick="event.stopPropagation()"/>
          <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`);
+
+    const uploadControls = isFactory()
+      ? (f.trial ? `<button class="btn small secondary" onclick="event.stopPropagation();removeTrialFix('${f.id}')">🗑 Remove trial report</button>` : '')
+      : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
+          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
+
+    const detailInner = (isMaster() && editFixId === f.id)
+      ? `
+        <div class="edit-form" onclick="event.stopPropagation()">
+          <div class="field-row">
+            <div class="field"><label>Label</label><input id="eLabel-${f.id}" type="text" value="${esc(f.label || '')}"/></div>
+            <div class="field"><label>Report date</label><input id="eReport-${f.id}" type="date" value="${f.report_date}"/></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Country</label><input id="eCountry-${f.id}" type="text" value="${esc(f.country || '')}"/></div>
+            <div class="field"><label>City</label><input id="eCity-${f.id}" type="text" value="${esc(f.city || '')}"/></div>
+          </div>
+          ${fixed ? `<div class="field"><label>Fix date</label><input id="eFix-${f.id}" type="date" value="${f.fix_date}"/></div>` : ''}
+          <div class="field"><label>Notes</label><textarea id="eNotes-${f.id}">${esc(f.notes || '')}</textarea></div>
+          <div class="tl-actions">
+            <button class="btn small" onclick="event.stopPropagation();saveFixEdits('${f.id}')">💾 Save changes</button>
+            <button class="btn small secondary" onclick="event.stopPropagation();cancelFixEdit()">Cancel</button>
+            <button class="btn small danger" onclick="event.stopPropagation();deleteFix('${f.id}')">🗑 Delete pothole</button>
+          </div>
+          <div class="field-hint">Tip: photo dates are edited under each photo in the timeline — the stamp on the photo updates to match when you save them.</div>
+          <div class="row-msg" id="upMsg-${f.id}"></div>
+        </div>`
+      : `
+        ${timeline}
+        <div class="tl-actions">
+          ${statusActions}
+          ${uploadControls}
+          ${isMaster() ? `<button class="btn small secondary" onclick="event.stopPropagation();startFixEdit('${f.id}')">✎ Edit</button>` : ''}
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
+          <button class="btn small secondary" onclick="event.stopPropagation();shareLoc('${f.id}','gmaps')">🗺 Google Maps</button>
+          <button class="btn small secondary" onclick="event.stopPropagation();shareLoc('${f.id}','waze')">🚘 Waze</button>
+          ${navigator.share ? `<button class="btn small secondary" onclick="event.stopPropagation();shareLocSheet('${f.id}')">📤 Share</button>` : ''}
+          <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
+        </div>
+        <div id="upList-${f.id}"></div>
+        <div class="row-msg" id="upMsg-${f.id}"></div>`;
 
     row.innerHTML = `
       <div class="fix-head" onclick="toggleFix('${f.id}')">
         <div class="fix-badge"><div class="d${fixed ? '' : ' open'}">#${fixNum(f)}</div><div class="l">${fixed ? 'fixed' : 'open'}</div></div>
         <div class="fix-info">
-          <div class="fix-label">${esc(f.label || 'Pothole')}</div>
+          <div class="fix-label">${esc(f.label || 'Pothole')}${f.trial ? `<span class="trial-chip">TRIAL · ${trialHoursLeft(f)}h left</span>` : ''}</div>
           <div class="fix-meta">${place ? esc(place) + ' · ' : ''}${fixed ? `fixed ${f.fix_date}` : `reported ${f.report_date}`}</div>
           ${f.notes ? `<div class="fix-notes">${esc(f.notes)}</div>` : ''}
         </div>
@@ -1449,20 +1776,7 @@ function renderMapAndList(){
         </div>
         <div class="fix-chev">▶</div>
       </div>
-      <div class="fix-detail">
-        ${timeline}
-        <div class="tl-actions">
-          ${statusActions}
-          <input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
-          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
-          ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}
-          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
-          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
-          <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
-        </div>
-        <div id="upList-${f.id}"></div>
-        <div class="row-msg" id="upMsg-${f.id}"></div>
-      </div>
+      <div class="fix-detail">${detailInner}</div>
     `;
     listEl.appendChild(row);
   });
@@ -1493,6 +1807,7 @@ async function loadFixes(){
     } catch (e) { loaded = []; }
   }
   fixes = loaded;
+  if (isFactory()) fixes = fixes.concat(loadTrialFixes());
   // Pre-pivot records have no status: anything with a fix_date was logged as
   // an already-completed repair, so it comes in green.
   fixes.forEach(f => {
