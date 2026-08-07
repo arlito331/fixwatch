@@ -375,16 +375,18 @@ function isField(){ return localStorage.getItem('fw_role') === 'field'; }
 // Each entry: who may sign in, which passwords are valid, and which country
 // they are limited to (none = sees every country). Add or retire a person by
 // changing a password pattern here — nothing else in the app needs touching.
+// One password per account, numbered in one sequence — the next territory
+// added here gets frank5, then frank6, and so on.
 const TRYOUT_USERS = {
-  'korea':     {pass: /^frank\d+$/i,     country: null},
-  'factory':   {pass: /^frank\d+$/i,     country: null},   // old name kept working
-  'rd':        {pass: /^rd\d+$/i,        country: 'República Dominicana'},
-  'ecuador':   {pass: /^ecuador\d+$/i,   country: 'Ecuador'},
-  'guatemala': {pass: /^guatemala\d+$/i, country: 'Guatemala'},
+  'korea':     {pass: 'frank1', country: null},
+  'factory':   {pass: 'frank1', country: null},   // old name kept working
+  'rd':        {pass: 'frank2', country: 'República Dominicana'},
+  'ecuador':   {pass: 'frank3', country: 'Ecuador'},
+  'guatemala': {pass: 'frank4', country: 'Guatemala'},
 };
 function tryoutMatch(user, pass){
   const u = TRYOUT_USERS[user];
-  return u && u.pass.test(pass) ? u : null;
+  return u && u.pass === pass.toLowerCase() ? u : null;
 }
 // Real GitHub codes all start with gh… — used to tell a staff code apart from
 // a mistyped tryout password instead of accepting nonsense as a credential.
@@ -442,7 +444,7 @@ function doLogin(){
   if (tr){
     localStorage.removeItem('fw_gh_token');
     localStorage.setItem('fw_role', 'tryout');
-    localStorage.setItem('fw_user', pRaw.toLowerCase());
+    localStorage.setItem('fw_user', u);   // the account name, never the password
     if (tr.country) localStorage.setItem('fw_country', tr.country);
     else localStorage.removeItem('fw_country');
     closeLogin(); updateGearDot(); loadFixes();
