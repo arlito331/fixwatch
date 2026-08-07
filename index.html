@@ -29,6 +29,14 @@ a{color:inherit;}
 .role-chip{flex-shrink:0;background:rgba(63,127,224,.15);border:1px solid rgba(63,127,224,.5);color:#7fa8e8;font-size:9px;font-weight:800;letter-spacing:1.5px;border-radius:5px;padding:4px 8px;}
 .trial-banner{display:none;background:rgba(240,160,48,.12);border-bottom:1px solid rgba(240,160,48,.4);color:#e8b968;font-size:11px;line-height:1.5;padding:9px 16px;}
 .trial-chip{display:inline-block;margin-left:8px;background:rgba(240,160,48,.15);border:1px solid rgba(240,160,48,.5);color:var(--orange);font-size:9px;font-weight:800;letter-spacing:1px;border-radius:5px;padding:2px 7px;vertical-align:1px;}
+.login-back{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);align-items:center;justify-content:center;padding:20px;}
+.login-back.open{display:flex;}
+.login-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;width:100%;max-width:360px;}
+.login-title{font-size:15px;font-weight:800;margin-bottom:4px;}
+.login-sub{font-size:11px;color:var(--dim);margin-bottom:16px;line-height:1.5;}
+.login-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+.login-msg{font-size:11px;margin-top:10px;min-height:14px;}
+.login-msg.err{color:var(--red);}
 
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);padding:0 20px;}
 .tab-btn{padding:14px 4px;margin-right:28px;background:none;border:none;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;}
@@ -209,9 +217,30 @@ a{color:inherit;}
     <div class="header-sub">Report a pothole with a photo and exact location — red until it's fixed, green once repaired.</div>
   </div>
   <span id="roleChip" class="role-chip" style="display:none;"></span>
-  <button class="gear-btn" onclick="promptToken()" title="One-time setup">
+  <button class="gear-btn" onclick="openLogin()" title="Sign in">
     ⚙️<span id="gearDot" class="gear-dot"></span>
   </button>
+</div>
+
+<div class="login-back" id="loginBack" onclick="if(event.target===this)closeLogin()">
+  <div class="login-card">
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Ask Ariel for your user and password. They stay saved in this browser — you only do this once.</div>
+    <div class="field">
+      <label>User</label>
+      <input id="lgUser" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="master · rd · ecuador · guatemala · factory"/>
+    </div>
+    <div class="field">
+      <label>Password / access code</label>
+      <input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div class="login-msg" id="lgMsg"></div>
+    <div class="login-actions">
+      <button class="btn" onclick="doLogin()">Sign in</button>
+      <button class="btn secondary" onclick="closeLogin()">Cancel</button>
+      <button class="btn secondary" id="lgOut" style="display:none;margin-left:auto;" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
 </div>
 
 <div class="trial-banner" id="trialBanner">
@@ -244,7 +273,7 @@ a{color:inherit;}
 
 <div id="view-log" class="view">
   <div class="setup-banner" id="setupBanner">
-    First time here? Click <b onclick="promptToken()">one-time setup</b> to paste the staff access code — takes 10 seconds, then this browser can save reports. Reporting is staff-only for now.
+    First time here? Click <b onclick="openLogin()">sign in</b> with the user and password Ariel gave you — takes 10 seconds, then this browser can save reports. Reporting is staff-only.
   </div>
 
   <div class="card">
@@ -341,41 +370,114 @@ function isField(){ return localStorage.getItem('fw_role') === 'field'; }
 // Future territory codes (RD, Ecuador, …) slot in here the same way.
 const TRIAL_CODES = { 'FACTORY-2026': 'factory' };
 function isFactory(){ return localStorage.getItem('fw_role') === 'factory'; }
-function isMaster(){ return !!getGhToken() && !isField() && !isFactory(); }
-function promptToken(){
-  const t = prompt('One-time setup\n\nPaste your access code here (ask Ariel for it).\nIt stays saved in this browser — you only do this once.\n\nMaster code: full control.\nField code (starts with "field:"): report potholes and add photos only.');
-  if (t){
-    let v = t.trim(), role = 'master';
-    const trialRole = TRIAL_CODES[v.toUpperCase()];
-    if (trialRole){
-      localStorage.removeItem('fw_gh_token');
-      localStorage.setItem('fw_role', trialRole);
-      updateGearDot();
-      loadFixes();
-      return;
-    }
-    if (/^field:/i.test(v)){ role = 'field'; v = v.replace(/^field:/i, '').trim(); }
-    setGhToken(v);
-    localStorage.setItem('fw_role', role);
-    updateGearDot();
-    if (fixes.length) renderMapAndList();
+function isMaster(){ return !!getGhToken() && localStorage.getItem('fw_role') === 'master'; }
+
+// Territory accounts: one country each, may report potholes and add photos,
+// may not change or erase anything that already exists. Enforced by the app,
+// exactly like the field role.
+const TERRITORIES = {
+  'rd':        {country: 'República Dominicana', chip: 'RD'},
+  'do':        {country: 'República Dominicana', chip: 'RD'},
+  'dominicana':{country: 'República Dominicana', chip: 'RD'},
+  'republica dominicana': {country: 'República Dominicana', chip: 'RD'},
+  'ecuador':   {country: 'Ecuador',   chip: 'ECUADOR'},
+  'ec':        {country: 'Ecuador',   chip: 'ECUADOR'},
+  'guatemala': {country: 'Guatemala', chip: 'GUATEMALA'},
+  'gt':        {country: 'Guatemala', chip: 'GUATEMALA'},
+};
+function isTerritory(){ return localStorage.getItem('fw_role') === 'territory' && !!getGhToken(); }
+function myCountry(){ return isTerritory() ? localStorage.getItem('fw_country') : null; }
+
+function promptToken(){ openLogin(); }
+function openLogin(){
+  const back = document.getElementById('loginBack');
+  document.getElementById('lgMsg').textContent = '';
+  document.getElementById('lgPass').value = '';
+  document.getElementById('lgOut').style.display = (getGhToken() || isFactory()) ? 'inline-block' : 'none';
+  back.classList.add('open');
+  setTimeout(() => document.getElementById('lgUser').focus(), 50);
+}
+function closeLogin(){ document.getElementById('loginBack').classList.remove('open'); }
+function signOut(){
+  localStorage.removeItem('fw_gh_token');
+  localStorage.removeItem('fw_role');
+  localStorage.removeItem('fw_country');
+  closeLogin();
+  updateGearDot();
+  loadFixes();
+}
+function doLogin(){
+  const u = fold(document.getElementById('lgUser').value.trim());
+  const pRaw = document.getElementById('lgPass').value.trim();
+  const msg = document.getElementById('lgMsg');
+  const fail = t => { msg.className = 'login-msg err'; msg.textContent = t; };
+
+  // Tryout: the code itself is the credential, no token involved.
+  if (TRIAL_CODES[pRaw.toUpperCase()] || (u === 'factory' && TRIAL_CODES[pRaw.toUpperCase()])){
+    localStorage.removeItem('fw_gh_token');
+    localStorage.removeItem('fw_country');
+    localStorage.setItem('fw_role', 'factory');
+    closeLogin(); updateGearDot(); loadFixes();
+    return;
   }
+  if (u === 'factory') return fail('That tryout code is not right.');
+  if (!pRaw) return fail('Enter your password.');
+
+  const terr = TERRITORIES[u];
+  if (terr){
+    setGhToken(pRaw);
+    localStorage.setItem('fw_role', 'territory');
+    localStorage.setItem('fw_country', terr.country);
+  } else if (u === 'field' || /^field:/i.test(pRaw)){
+    setGhToken(pRaw.replace(/^field:/i, '').trim());
+    localStorage.setItem('fw_role', 'field');
+    localStorage.removeItem('fw_country');
+  } else if (!u || u === 'master' || u === 'ariel' || u === 'joel'){
+    setGhToken(pRaw);
+    localStorage.setItem('fw_role', 'master');
+    localStorage.removeItem('fw_country');
+  } else {
+    return fail(`Unknown user "${document.getElementById('lgUser').value.trim()}".`);
+  }
+  closeLogin();
+  updateGearDot();
+  loadFixes();
 }
 function updateGearDot(){
   const has = !!getGhToken() || isFactory();
   document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
   const chip = document.getElementById('roleChip');
-  if (getGhToken() && isField()){
+  if (isTerritory()){
+    const t = Object.values(TERRITORIES).find(x => x.country === myCountry());
+    chip.style.display = 'inline-block'; chip.textContent = t ? t.chip : 'TERRITORY';
+    chip.title = `${myCountry()} access: report potholes and add photos in your country only`;
+  } else if (getGhToken() && isField()){
     chip.style.display = 'inline-block'; chip.textContent = 'FIELD';
     chip.title = 'Field access: report potholes and add photos only';
   } else if (isFactory()){
     chip.style.display = 'inline-block'; chip.textContent = 'TRYOUT';
     chip.title = 'Tryout access: browse everything; your reports stay on this device and self-delete after 48h';
   } else {
-    chip.style.display = 'none';
+    chip.style.display = 'none'; chip.textContent = ''; chip.title = '';
   }
   document.getElementById('trialBanner').style.display = isFactory() ? 'block' : 'none';
+  applyTerritoryUI();
+}
+
+// Lock the country controls for territory users so their view and their new
+// reports can only ever be their own country.
+function applyTerritoryUI(){
+  const c = myCountry();
+  const fltC = document.getElementById('fltCountry');
+  const inC = document.getElementById('fCountry');
+  if (c){
+    inC.value = c; inC.readOnly = true; inC.style.opacity = '.6';
+    fltC.disabled = true;
+  } else {
+    inC.readOnly = false; inC.style.opacity = '';
+    fltC.disabled = false;
+  }
 }
 
 // ---------- tryout trial reports — this device only, self-delete after 48h ----------
@@ -862,12 +964,28 @@ async function stageFiles(fixId){
 // ---------- fixes.json read-modify-write ----------
 async function commitFixes(message){
   const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
-  let sha = null;
-  if (getRes.ok){ sha = (await getRes.json()).sha; }
+  let sha = null, remote = null;
+  if (getRes.ok){
+    const d = await getRes.json();
+    sha = d.sha;
+    try { remote = JSON.parse(decodeURIComponent(escape(atob(d.content.replace(/\n/g,''))))); } catch (e){}
+  }
   else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
   else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
+
+  let out = fixes.filter(f => !f.trial);
+  // A territory account only holds its own country in memory, so writing that
+  // list straight out would erase every other country. Merge instead: their
+  // records overwrite, everyone else's pass through untouched.
+  if (myCountry() && Array.isArray(remote)){
+    const mineById = new Map(out.map(f => [f.id, f]));
+    const merged = remote.map(f => mineById.has(f.id) ? mineById.get(f.id) : f);
+    const remoteIds = new Set(remote.map(f => f.id));
+    out.forEach(f => { if (!remoteIds.has(f.id)) merged.push(f); });
+    out = merged;
+  }
   // _-prefixed keys are transient UI state (e.g. _oldDate) — never persisted
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(fixes, (k, v) => k.startsWith('_') ? undefined : v, 2))));
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(out, (k, v) => k.startsWith('_') ? undefined : v, 2))));
   await ghPutFile(DATA_PATH, b64, message, sha);
 }
 
@@ -1157,7 +1275,7 @@ async function logFix(){
     lat: pickedLatLng.lat,
     lng: pickedLatLng.lng,
     label: document.getElementById('fLabel').value.trim(),
-    country: normCountry(document.getElementById('fCountry').value),
+    country: myCountry() || normCountry(document.getElementById('fCountry').value),
     city: document.getElementById('fCity').value.trim(),
     fix_date: null,
     report_date: dateVal,
@@ -1219,7 +1337,8 @@ async function logFix(){
       const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(current, null, 2))));
       await ghPutFile(DATA_PATH, b64, `pothole reported: ${entry.label || entry.lat + ',' + entry.lng} (${entry.report_date})`, sha);
 
-      fixes = current;
+      const mine = myCountry();
+      fixes = mine ? current.filter(f => fold(normCountry(f.country)) === fold(mine)) : current;
       renderMapAndList();
       msg.className = 'ok'; msg.textContent = `Pothole reported with ${entry.photos.length} photo(s) — it's now a red dot on the map.`;
     }
@@ -1258,7 +1377,7 @@ async function addUpdate(fixId){
   try {
     // Field users add photos without changing status; for masters, an
     // "after" photo on an open pothole marks it fixed.
-    const wasOpen = !isFixed(fix) && !isField();
+    const wasOpen = !isFixed(fix) && isMaster();
     const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
     fix.photos = (fix.photos || []).concat(added);
     staged[fixId] = []; // photos are up — a retry after a failed save below must not re-upload them
@@ -1292,7 +1411,7 @@ async function addUpdate(fixId){
 
 // ---------- manual Fixed toggle ----------
 async function markFixed(fixId){
-  if (isField() || isFactory()) return;
+  if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
@@ -1312,7 +1431,7 @@ async function markFixed(fixId){
 }
 
 async function reopenFix(fixId){
-  if (isField() || isFactory()) return;
+  if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
@@ -1339,7 +1458,7 @@ function photoGroups(fix){
 
 // ---------- per-photo date editing on already-uploaded photos ----------
 function photoDateChanged(el){
-  if (isField() || isFactory()) return;
+  if (!isMaster()) return;
   const fix = fixes.find(f => f.id === el.dataset.fix);
   const p = fix && fix.photos.find(x => x.path === el.dataset.path);
   if (!p) return;
@@ -1352,7 +1471,7 @@ function photoDateChanged(el){
 }
 
 async function saveDates(fixId){
-  if (isField() || isFactory()) return;
+  if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   if (isFactory()){ msgEl.className='row-msg err'; msgEl.textContent="Tryout mode: existing reports can't be changed — log your own trial pothole instead."; return; }
@@ -1384,7 +1503,7 @@ const COUNTRY_CANON = {
   'panama':'Panama', 'mexico':'México', 'guatemala':'Guatemala', 'honduras':'Honduras',
   'el salvador':'El Salvador', 'nicaragua':'Nicaragua', 'costa rica':'Costa Rica',
   'colombia':'Colombia', 'republica dominicana':'República Dominicana',
-  'dominican republic':'República Dominicana',
+  'dominican republic':'República Dominicana', 'ecuador':'Ecuador',
 };
 function normCountry(s){ s = (s || '').trim(); return COUNTRY_CANON[fold(s)] || s; }
 
@@ -1705,7 +1824,7 @@ function renderMapAndList(){
                 <div class="car-day">Day ${it.day}</div>
                 ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
                 <img loading="lazy" src="${photoSrc(it.p)}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
-                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${(isField() || isFactory()) ? 'disabled' : ''} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
           <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
@@ -1714,7 +1833,7 @@ function renderMapAndList(){
 
     const place = [f.city, f.country].filter(Boolean).join(', ');
 
-    const statusActions = (isField() || isFactory()) ? '' : (fixed
+    const statusActions = !isMaster() ? '' : (fixed
       ? `<button class="btn small secondary" onclick="event.stopPropagation();reopenFix('${f.id}')">↩ Reopen</button>`
       : `<input type="date" id="fixedDate-${f.id}" value="${new Date().toISOString().slice(0,10)}" onclick="event.stopPropagation()"/>
          <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`);
@@ -1722,8 +1841,8 @@ function renderMapAndList(){
     const uploadControls = isFactory()
       ? (f.trial ? `<button class="btn small secondary" onclick="event.stopPropagation();removeTrialFix('${f.id}')">🗑 Remove trial report</button>` : '')
       : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
-          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
-          ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
+          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || !isMaster()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${!isMaster() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
 
     const detailInner = (isMaster() && editFixId === f.id)
       ? `
@@ -1808,6 +1927,9 @@ async function loadFixes(){
   }
   fixes = loaded;
   if (isFactory()) fixes = fixes.concat(loadTrialFixes());
+  // Territory accounts never even hold other countries' records in memory.
+  const mine = myCountry();
+  if (mine) fixes = fixes.filter(f => fold(normCountry(f.country)) === fold(mine));
   // Pre-pivot records have no status: anything with a fix_date was logged as
   // an already-completed repair, so it comes in green.
   fixes.forEach(f => {
