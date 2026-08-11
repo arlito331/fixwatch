@@ -698,9 +698,9 @@
     "label": "",
     "country": "Panama",
     "city": "Coclé",
-    "fix_date": null,
+    "fix_date": "2026-08-10",
     "report_date": "2026-08-10",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
