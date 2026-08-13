@@ -736,5 +736,25 @@
     "alt": 19.9,
     "speed_kmh": 0.2,
     "num": 19
+  },
+  {
+    "id": "1786630146204-2vjvaf",
+    "lat": 8.9169956,
+    "lng": -79.7412715,
+    "label": "🚫Monitoreo competencia (Alcaldesa Arraijan)",
+    "country": "Panama",
+    "city": "Panamá Oeste",
+    "fix_date": null,
+    "report_date": "2026-08-13",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-13",
+        "path": "photos/1786630146204-2vjvaf/2026-08-13_msrlgl1k0.jpg"
+      }
+    ],
+    "logged_at": "2026-08-13T14:09:06.208Z",
+    "num": 20
   }
 ]
