@@ -788,5 +788,27 @@
     ],
     "logged_at": "2026-08-13T14:09:06.208Z",
     "num": 20
+  },
+  {
+    "id": "1787146145631-adn1np",
+    "lat": 8.993405309256078,
+    "lng": -79.51252140216609,
+    "label": "",
+    "country": "Panama",
+    "city": "San Francisco",
+    "fix_date": null,
+    "report_date": "2026-08-19",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787146145631-adn1np/2026-08-19_mt04o83f0.jpg"
+      }
+    ],
+    "logged_at": "2026-08-19T13:29:05.633Z",
+    "alt": 18.9,
+    "speed_kmh": 0.2,
+    "num": 21
   }
 ]
