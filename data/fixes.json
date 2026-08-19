@@ -796,9 +796,9 @@
     "label": "",
     "country": "Panama",
     "city": "San Francisco",
-    "fix_date": null,
+    "fix_date": "2026-08-19",
     "report_date": "2026-08-19",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
@@ -826,6 +826,18 @@
       {
         "date": "2026-08-19",
         "path": "photos/1787146755372-559zca/2026-08-19_mt051b570.jpg"
+      },
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787146755372-559zca/2026-08-19_mt09cr540.jpg"
+      },
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787146755372-559zca/2026-08-19_mt09cs9e0.jpg"
+      },
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787146755372-559zca/2026-08-19_mt09cwkn0.jpg"
       }
     ],
     "logged_at": "2026-08-19T13:39:15.375Z",
