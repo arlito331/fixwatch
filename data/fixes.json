@@ -840,9 +840,9 @@
     "label": "",
     "country": "Panama",
     "city": "San Francisco",
-    "fix_date": null,
+    "fix_date": "2026-08-19",
     "report_date": "2026-08-19",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
