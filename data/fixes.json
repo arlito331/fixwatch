@@ -832,5 +832,27 @@
     "alt": 24.1,
     "speed_kmh": 0,
     "num": 22
+  },
+  {
+    "id": "1787149023236-qjppkv",
+    "lat": 8.993525868290098,
+    "lng": -79.51210845269217,
+    "label": "",
+    "country": "Panama",
+    "city": "San Francisco",
+    "fix_date": null,
+    "report_date": "2026-08-19",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787149023236-qjppkv/2026-08-19_mt06dwkn0.jpg"
+      }
+    ],
+    "logged_at": "2026-08-19T14:17:03.239Z",
+    "alt": 24.8,
+    "speed_kmh": 0,
+    "num": 23
   }
 ]
