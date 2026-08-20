@@ -930,14 +930,22 @@
     "label": "Calle Matilde Obarrio De Mallet",
     "country": "Panama",
     "city": "San Francisco",
-    "fix_date": null,
+    "fix_date": "2026-08-20",
     "report_date": "2026-08-19",
-    "status": "reported",
+    "status": "fixed",
     "notes": "",
     "photos": [
       {
         "date": "2026-08-19",
         "path": "photos/1787240582317-qpduwv/2026-08-19_mt1owbn00.jpg"
+      },
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787240582317-qpduwv/2026-08-19_mt1p08f20.jpg"
+      },
+      {
+        "date": "2026-08-20",
+        "path": "photos/1787240582317-qpduwv/2026-08-20_mt1p0b3m1.jpg"
       }
     ],
     "logged_at": "2026-08-20T15:43:02.317Z",
