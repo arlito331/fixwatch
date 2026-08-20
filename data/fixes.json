@@ -998,5 +998,25 @@
     ],
     "logged_at": "2026-08-20T15:52:10.660Z",
     "num": 28
+  },
+  {
+    "id": "1787241321589-gintae",
+    "lat": 8.994031405993134,
+    "lng": -79.50930655002595,
+    "label": "",
+    "country": "Panama",
+    "city": "San Francisco",
+    "fix_date": null,
+    "report_date": "2026-08-19",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787241321589-gintae/2026-08-19_mt1pc66q0.jpg"
+      }
+    ],
+    "logged_at": "2026-08-20T15:55:21.591Z",
+    "num": 29
   }
 ]
