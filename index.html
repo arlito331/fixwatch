@@ -139,12 +139,20 @@ a{color:inherit;}
 .ph-item{display:flex;flex-direction:column;gap:4px;align-items:center;}
 .ph-date{background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 5px;font-size:10px;outline:none;width:110px;}
 .ph-date.dirty{border-color:var(--orange);color:var(--orange);}
+.ph-del{background:transparent;border:1px solid rgba(255,59,59,.4);color:var(--red);border-radius:5px;padding:3px 6px;font-size:10px;cursor:pointer;width:110px;}
+.ph-del:hover{background:rgba(255,59,59,.12);}
+.loc-edit{margin-top:10px;padding:12px;border:1px dashed #2c2c2e;border-radius:8px;background:rgba(63,127,224,.05);}
+.loc-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.loc-edit label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.loc-edit input{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:12px;outline:none;}
+.loc-edit input:focus{border-color:var(--blue);}
+.loc-edit-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));}
 
 /* Touch devices at any width/orientation: 16px inputs stop iOS from
    auto-zooming into a focused field (its threshold is 16px). */
 @media (pointer: coarse){
-  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date]{font-size:16px;}
+  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date],.loc-edit input{font-size:16px;}
 }
 
 /* iPhone / small screens */
@@ -164,7 +172,8 @@ a{color:inherit;}
   #pickMap{height:240px;}
   #listMap{height:280px;}
   /* 16px stops iOS Safari from auto-zooming into focused fields */
-  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date]{font-size:16px;}
+  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date],.loc-edit input{font-size:16px;}
+  .loc-edit-grid{grid-template-columns:1fr;}
   .btn{padding:12px 16px;font-size:12px;}
   .btn.small{padding:10px 12px;font-size:11px;}
   .search-bar .btn{padding:12px 12px;}
@@ -382,6 +391,24 @@ async function ghPutFile(path, b64, message, sha){
     throw new Error(e.message || `save failed (${res.status})`);
   }
   return res.json();
+}
+
+async function ghDeleteFile(path, message){
+  // Look up the file's blob sha (required to delete via the contents API).
+  const getRes = await ghFetch(`${API_BASE}${path}?ref=main`);
+  if (getRes.status === 404) return; // already gone — nothing to do
+  if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
+  if (!getRes.ok) throw new Error(`read failed (${getRes.status})`);
+  const sha = (await getRes.json()).sha;
+  const res = await ghFetch(API_BASE + path, {
+    method: 'DELETE',
+    body: JSON.stringify({message, sha, branch:'main'}),
+  });
+  if (res.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
+  if (!res.ok){
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `delete failed (${res.status})`);
+  }
 }
 
 // ---------- tabs ----------
@@ -1092,6 +1119,84 @@ async function saveDates(fixId){
   }
 }
 
+// ---------- delete a single already-uploaded photo ----------
+async function deletePhoto(fixId, path){
+  if (isField()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  if (!fix) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  if (!confirm("Delete this photo? This can't be undone.")) return;
+  const idx = (fix.photos || []).findIndex(p => p.path === path);
+  if (idx === -1) return;
+  const removed = fix.photos[idx];
+  fix.photos.splice(idx, 1);
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting photo…';
+  try {
+    // Drop it from fixes.json first so the app stops showing it even if the
+    // image-file delete below fails for any reason.
+    await commitFixes(`remove photo: ${fix.label || fix.id}`);
+    try { await ghDeleteFile(removed.path, `remove photo file: ${fix.label || fix.id}`); }
+    catch (_) { /* orphaned file is harmless — it no longer appears in the app */ }
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = 'Photo deleted.'; }
+  } catch (e) {
+    fix.photos.splice(idx, 0, removed); // rollback the in-memory change
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not delete.';
+  }
+}
+
+// ---------- edit the location of an existing pothole ----------
+function toggleLocEdit(fixId){
+  if (isField()) return;
+  const el = document.getElementById(`locEdit-${fixId}`);
+  if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+}
+
+function useMyLocationFor(fixId, btn){
+  if (!navigator.geolocation){ alert('Location is not available on this device.'); return; }
+  const orig = btn.textContent; btn.textContent = 'Locating…'; btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const latEl = document.getElementById(`locLat-${fixId}`);
+      const lngEl = document.getElementById(`locLng-${fixId}`);
+      if (latEl) latEl.value = pos.coords.latitude.toFixed(6);
+      if (lngEl) lngEl.value = pos.coords.longitude.toFixed(6);
+      btn.textContent = orig; btn.disabled = false;
+    },
+    err => { alert('Could not get location: ' + err.message); btn.textContent = orig; btn.disabled = false; },
+    {enableHighAccuracy:true, timeout:10000}
+  );
+}
+
+async function saveLocation(fixId){
+  if (isField()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  if (!fix) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  const lat = parseFloat(document.getElementById(`locLat-${fixId}`).value);
+  const lng = parseFloat(document.getElementById(`locLng-${fixId}`).value);
+  if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180){
+    msgEl.className='row-msg err'; msgEl.textContent='Enter valid coordinates (latitude −90…90, longitude −180…180).'; return;
+  }
+  const city = document.getElementById(`locCity-${fixId}`).value.trim();
+  const country = document.getElementById(`locCountry-${fixId}`).value.trim();
+  const prev = {lat: fix.lat, lng: fix.lng, city: fix.city, country: fix.country};
+  fix.lat = lat; fix.lng = lng; fix.city = city; fix.country = country;
+  msgEl.className='row-msg'; msgEl.textContent='Saving location…';
+  try {
+    await commitFixes(`edit location: ${fix.label || fix.id}`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className='row-msg ok'; m2.textContent='Location updated.'; }
+  } catch (e) {
+    Object.assign(fix, prev); // rollback
+    msgEl.className='row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
 // ---------- country / city filters ----------
 // "Panamá" from the Spanish geocoder and "Panama" typed by hand are the same
 // country; filters compare accent- and case-insensitively so records never
@@ -1422,6 +1527,7 @@ function renderMapAndList(){
                 <div class="car-day">Day ${it.day}</div>
                 <img loading="lazy" src="${RAW_BASE + it.p.path}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
                 <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path)}" ${isField() ? 'disabled' : ''} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+                ${isField() ? '' : `<button class="ph-del" onclick="event.stopPropagation();deletePhoto('${f.id}','${esc(it.p.path)}')">🗑 Delete</button>`}
               </div>`).join('')}
           </div>
           <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
@@ -1456,10 +1562,24 @@ function renderMapAndList(){
           <input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || isField()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
           ${isField() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}
+          ${isField() ? '' : `<button class="btn small secondary" onclick="event.stopPropagation();toggleLocEdit('${f.id}')">📍 Edit location</button>`}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
           ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
           <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
         </div>
+        ${isField() ? '' : `
+        <div class="loc-edit" id="locEdit-${f.id}" style="display:none;" onclick="event.stopPropagation()">
+          <div class="loc-edit-grid">
+            <label>City<input type="text" id="locCity-${f.id}" value="${esc(f.city || '')}" placeholder="City"/></label>
+            <label>Country<input type="text" id="locCountry-${f.id}" value="${esc(f.country || '')}" placeholder="Country"/></label>
+            <label>Latitude<input type="number" step="any" inputmode="decimal" id="locLat-${f.id}" value="${f.lat}"/></label>
+            <label>Longitude<input type="number" step="any" inputmode="decimal" id="locLng-${f.id}" value="${f.lng}"/></label>
+          </div>
+          <div class="loc-edit-actions">
+            <button class="btn small secondary" onclick="event.stopPropagation();useMyLocationFor('${f.id}',this)">📍 Use my current location</button>
+            <button class="btn small" onclick="event.stopPropagation();saveLocation('${f.id}')">Save location</button>
+          </div>
+        </div>`}
         <div id="upList-${f.id}"></div>
         <div class="row-msg" id="upMsg-${f.id}"></div>
       </div>
