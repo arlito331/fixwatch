@@ -922,5 +922,25 @@
     ],
     "logged_at": "2026-08-20T15:40:24.932Z",
     "num": 25
+  },
+  {
+    "id": "1787240582317-qpduwv",
+    "lat": 8.993621658146754,
+    "lng": -79.51143622398378,
+    "label": "Calle Matilde Obarrio De Mallet",
+    "country": "Panama",
+    "city": "San Francisco",
+    "fix_date": null,
+    "report_date": "2026-08-19",
+    "status": "reported",
+    "notes": "",
+    "photos": [
+      {
+        "date": "2026-08-19",
+        "path": "photos/1787240582317-qpduwv/2026-08-19_mt1owbn00.jpg"
+      }
+    ],
+    "logged_at": "2026-08-20T15:43:02.317Z",
+    "num": 26
   }
 ]
