@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#0D0D0D"/>
+<title>LogPothole — Report &amp; Track Pothole Repairs</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230b0e14' stroke='%2346c97e' stroke-width='1.2'/%3E%3Ccircle cx='16' cy='16' r='12.5' fill='none' stroke='%2346c97e' stroke-opacity='.35' stroke-width='1.4'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%2346c97e' stroke-opacity='.28' stroke-width='1.2'/%3E%3Cline x1='2' y1='16' x2='30' y2='16' stroke='%2346c97e' stroke-opacity='.15'/%3E%3Cline x1='16' y1='2' x2='16' y2='30' stroke='%2346c97e' stroke-opacity='.15'/%3E%3Cpath d='M16 16 L16 3.5 A12.5 12.5 0 0 1 27.3 22.5 Z' fill='%2346c97e' fill-opacity='.3'/%3E%3Ccircle cx='22' cy='10' r='1.6' fill='%23FF5050'/%3E%3Ccircle cx='9' cy='20' r='1.3' fill='%23FF5050'/%3E%3Ccircle cx='20' cy='23' r='1.2' fill='%23FF5050'/%3E%3Cpath d='M12.6 16.3l2.3 2.3 4.8-5.1' fill='none' stroke='%2346c97e' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{ --bg:#0D0D0D; --panel:#1A1A1B; --border:#262626; --text:#fff; --muted:#999; --dim:#555; --accent:#46C97E; --blue:#3F7FE0; --red:#FF3B3B; --orange:#F0A030; }
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,Helvetica,Arial,sans-serif;min-height:100vh;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+input,select,textarea,button{touch-action:manipulation;}
+a{color:inherit;}
+
+.header{display:flex;align-items:center;gap:12px;padding:14px 20px;padding-top:calc(14px + env(safe-area-inset-top));border-bottom:1px solid var(--border);background:var(--panel);}
+.header-text{flex:1;min-width:0;}
+.header-eyebrow{font-size:9px;letter-spacing:3px;color:var(--accent);font-weight:700;margin-bottom:3px;}
+.header-title{font-size:16px;font-weight:700;}
+.header-sub{font-size:10px;color:var(--dim);margin-top:2px;}
+.gear-btn{position:relative;background:none;border:none;font-size:18px;cursor:pointer;padding:6px;opacity:0.6;flex-shrink:0;}
+.gear-btn:hover{opacity:1;}
+.gear-dot{position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:var(--red);}
+.gear-dot.ok{background:var(--accent);}
+.role-chip{flex-shrink:0;background:rgba(63,127,224,.15);border:1px solid rgba(63,127,224,.5);color:#7fa8e8;font-size:9px;font-weight:800;letter-spacing:1.5px;border-radius:5px;padding:4px 8px;}
+.trial-banner{display:none;background:rgba(240,160,48,.12);border-bottom:1px solid rgba(240,160,48,.4);color:#e8b968;font-size:11px;line-height:1.5;padding:9px 16px;}
+.login-back{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);align-items:center;justify-content:center;padding:20px;}
+.login-back.open{display:flex;}
+.login-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;width:100%;max-width:360px;}
+.login-title{font-size:15px;font-weight:800;margin-bottom:4px;}
+.login-sub{font-size:11px;color:var(--dim);margin-bottom:16px;line-height:1.5;}
+.login-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+.login-msg{font-size:11px;margin-top:10px;min-height:14px;}
+.login-msg.err{color:var(--red);}
+
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);padding:0 20px;}
+.tab-btn{padding:14px 4px;margin-right:28px;background:none;border:none;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+
+.view{display:none;padding:20px;max-width:900px;margin:0 auto;}
+.view.active{display:block;}
+
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:16px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:10px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;}
+.field input,.field textarea{width:100%;background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;}
+.field input:focus,.field textarea:focus{border-color:var(--accent);}
+.field textarea{resize:vertical;min-height:60px;}
+.field-hint{font-size:10px;color:var(--dim);margin-top:5px;line-height:1.5;}
+.field-row{display:flex;gap:10px;}
+.field-row .field{flex:1;}
+.field input[type=file]{padding:8px;font-size:11px;color:var(--muted);}
+
+.btn{background:var(--accent);color:#04170c;border:none;border-radius:5px;padding:10px 18px;font-size:11px;font-weight:700;letter-spacing:0.5px;cursor:pointer;}
+.btn:hover{background:#5bdb90;}
+.btn:disabled{opacity:0.5;cursor:not-allowed;}
+.btn.secondary{background:transparent;border:1px solid var(--border);color:var(--muted);}
+.btn.small{padding:6px 12px;font-size:10px;}
+
+#pickMap{height:280px;border-radius:8px;overflow:hidden;margin-bottom:12px;border:1px solid var(--border);}
+#listMap{height:360px;border-radius:8px;overflow:hidden;margin-bottom:16px;border:1px solid var(--border);}
+
+.search-bar{display:flex;gap:8px;}
+.search-bar input{flex:1;min-width:0;}
+.search-bar .btn{flex-shrink:0;}
+.search-results{position:relative;}
+.search-results:not(:empty){margin-top:6px;background:#0a0a0a;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.sr-result{padding:10px 12px;font-size:12px;color:var(--text);cursor:pointer;border-bottom:1px solid #1c1c1d;}
+.sr-result:last-child{border-bottom:none;}
+.sr-result:hover{background:#1f1f20;}
+.sr-result .sr-main{font-weight:600;}
+.sr-result .sr-sub{font-size:10px;color:var(--dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sr-loading{padding:10px 12px;font-size:11px;color:var(--dim);}
+.coord-readout{font-size:11px;color:var(--muted);font-family:monospace;margin-top:6px;}
+.coord-readout.unset{color:var(--dim);}
+
+#logMsg,.row-msg{font-size:11px;margin-top:12px;min-height:14px;}
+#logMsg.ok,.row-msg.ok{color:var(--accent);}
+#logMsg.err,.row-msg.err{color:var(--red);}
+
+.setup-banner{display:none;background:rgba(240,160,48,.08);border:1px solid rgba(240,160,48,.35);color:var(--orange);border-radius:8px;padding:12px 16px;font-size:12px;line-height:1.6;margin-bottom:16px;}
+.setup-banner b{cursor:pointer;text-decoration:underline;}
+
+.summary-row{display:flex;gap:12px;margin-bottom:16px;}
+.summary-tile{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.summary-tile .n{font-size:22px;font-weight:800;}
+.summary-tile .l{font-size:9px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase;margin-top:2px;}
+
+.fix-row{background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;}
+.fix-head{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;}
+.fix-head:hover{background:#202021;}
+.fix-badge{flex-shrink:0;width:56px;height:56px;border-radius:8px;background:#0a0a0a;border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.fix-badge .d{font-size:16px;font-weight:800;color:var(--accent);line-height:1;}
+.fix-badge .l{font-size:7px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-top:2px;}
+.fix-info{flex:1;min-width:0;}
+.fix-label{font-size:13px;font-weight:600;}
+.fix-meta{font-size:10px;color:var(--dim);margin-top:2px;font-family:monospace;}
+.fix-notes{font-size:11px;color:var(--muted);margin-top:4px;}
+.fix-photocount{flex-shrink:0;font-size:10px;color:var(--dim);}
+.fix-chev{flex-shrink:0;color:var(--dim);font-size:11px;transition:transform .15s;}
+.fix-row.open .fix-chev{transform:rotate(90deg);}
+
+.fix-detail{display:none;border-top:1px solid var(--border);padding:16px 14px;background:#161617;}
+.fix-row.open .fix-detail{display:block;}
+
+/* Netflix-style horizontal photo strip */
+.carousel{display:flex;align-items:center;gap:6px;margin-bottom:14px;}
+.car-btn{flex-shrink:0;width:32px;height:96px;background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:20px;cursor:pointer;transition:color .15s,border-color .15s;}
+.car-btn:hover{color:var(--text);border-color:#3a3a3a;}
+.car-track{display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;flex:1;min-width:0;padding:2px 0;}
+.car-track::-webkit-scrollbar{display:none;}
+.car-item{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:center;position:relative;}
+.ph-del{position:absolute;top:22px;right:4px;z-index:2;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#ff8080;font-size:12px;font-weight:800;cursor:pointer;line-height:1;}
+.ph-del:hover{background:var(--red);color:#fff;}
+.btn.danger{background:var(--red);color:#fff;}
+.edit-form{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;}
+.car-day{font-size:11px;font-weight:800;color:var(--accent);}
+.car-item img{width:150px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
+.car-item img:hover{transform:scale(1.05);}
+
+.tl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px dashed #2c2c2e;}
+.tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
+.tl-actions input[type=file]{max-width:210px;font-size:10px;color:var(--muted);}
+.no-photos{font-size:11px;color:var(--dim);margin-bottom:10px;}
+
+.stage-hint{font-size:10px;color:var(--dim);margin-top:10px;}
+.stage-row{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-top:8px;flex-wrap:wrap;}
+.stage-row input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 8px;font-size:11px;outline:none;}
+.sr-name{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sr-day{color:var(--accent);font-weight:700;}
+
+.empty-state{text-align:center;color:var(--dim);font-size:12px;padding:40px 20px;}
+
+.num-pin{width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #0D0D0D;box-shadow:0 2px 8px rgba(0,0,0,.55);}
+.num-pin.fixed{background:var(--accent);color:#04170c;}
+
+.filter-row{display:flex;gap:10px;margin-bottom:14px;}
+.filter-row select{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 12px;font-size:12px;outline:none;}
+.filter-row select:focus{border-color:var(--accent);}
+
+.fix-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
+.day-chip{background:#0a0a0a;border:1px solid var(--border);color:var(--accent);font-weight:800;font-size:12px;border-radius:6px;padding:5px 10px;white-space:nowrap;}
+.day-chip.open{color:var(--red);}
+.fix-badge .d.open{color:var(--red);}
+.open-n{color:var(--red);}
+.fixed-n{color:var(--accent);}
+
+.ph-item{display:flex;flex-direction:column;gap:4px;align-items:center;}
+.ph-date{background:#0a0a0a;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 5px;font-size:10px;outline:none;width:110px;}
+.ph-date.dirty{border-color:var(--orange);color:var(--orange);}
+.footer{text-align:center;font-size:10px;letter-spacing:1px;color:var(--dim);padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));}
+
+/* Touch devices at any width/orientation: 16px inputs stop iOS from
+   auto-zooming into a focused field (its threshold is 16px). */
+@media (pointer: coarse){
+  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date]{font-size:16px;}
+}
+
+/* iPhone / small screens */
+@media (max-width: 640px){
+  .view{padding:14px 12px;}
+  .header{padding:12px 14px;}
+  .header-sub{display:none;}
+  .tabs{padding:0 14px;}
+  .tab-btn{margin-right:18px;font-size:11px;padding:12px 2px;}
+  .summary-row{gap:8px;}
+  .summary-tile{padding:10px 10px;}
+  .summary-tile .n{font-size:18px;}
+  .summary-tile .l{font-size:8px;}
+  .filter-row{flex-wrap:wrap;gap:8px;}
+  .filter-row select{flex:1 1 45%;min-width:0;}
+  .field-row{flex-direction:column;gap:0;}
+  #pickMap{height:240px;}
+  #listMap{height:280px;}
+  /* 16px stops iOS Safari from auto-zooming into focused fields */
+  .field input,.field textarea,.filter-row select,.tl-actions input[type=date],.ph-date,.stage-row input[type=date]{font-size:16px;}
+  .btn{padding:12px 16px;font-size:12px;}
+  .btn.small{padding:10px 12px;font-size:11px;}
+  .search-bar .btn{padding:12px 12px;}
+  .card{padding:16px 14px;}
+  .fix-head{padding:10px 10px;gap:8px;}
+  .fix-badge{width:46px;height:46px;}
+  .fix-badge .d{font-size:13px;}
+  .day-chip{font-size:11px;padding:4px 8px;}
+  .car-item img{width:120px;height:86px;}
+  .car-btn{display:none;} /* swipe instead of arrow buttons */
+  .tl-actions input[type=file]{max-width:100%;flex:1 1 100%;}
+  .show-nav{width:38px;height:56px;font-size:22px;}
+}
+
+/* slideshow overlay */
+#showOverlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10000;display:none;flex-direction:column;align-items:center;justify-content:center;}
+#showOverlay.on{display:flex;}
+#showImg{max-width:92vw;max-height:74vh;border-radius:10px;border:1px solid #333;}
+#showDay{font-size:26px;font-weight:800;color:var(--accent);margin-top:18px;}
+#showSub{font-size:12px;color:var(--muted);margin-top:4px;}
+#showClose{position:absolute;top:18px;right:22px;background:none;border:none;color:#888;font-size:26px;cursor:pointer;}
+#showClose:hover{color:#fff;}
+.show-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(26,26,27,.85);border:1px solid #333;color:#bbb;width:46px;height:64px;border-radius:10px;font-size:26px;cursor:pointer;}
+.show-nav:hover{color:#fff;border-color:#555;}
+#showPrev{left:16px;}
+#showNext{right:16px;}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-text">
+    <div class="header-eyebrow">LOGPOTHOLE</div>
+    <div class="header-title">Pothole Reporting &amp; Fix Tracker</div>
+    <div class="header-sub">Report a pothole with a photo and exact location — red until it's fixed, green once repaired.</div>
+  </div>
+  <span id="roleChip" class="role-chip" style="display:none;"></span>
+  <button class="gear-btn" onclick="openLogin()" title="Sign in">
+    ⚙️<span id="gearDot" class="gear-dot"></span>
+  </button>
+</div>
+
+<div class="login-back" id="loginBack" onclick="if(event.target===this)closeLogin()">
+  <div class="login-card">
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Ask Ariel for your user and password. They stay saved in this browser — you only do this once.</div>
+    <div class="field">
+      <label>User</label>
+      <input id="lgUser" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="master · rd · ecuador · guatemala · korea"/>
+    </div>
+    <div class="field">
+      <label>Password / access code</label>
+      <input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div class="login-msg" id="lgMsg"></div>
+    <div class="login-actions">
+      <button class="btn" onclick="doLogin()">Sign in</button>
+      <button class="btn secondary" onclick="closeLogin()">Cancel</button>
+      <button class="btn secondary" id="lgOut" style="display:none;margin-left:auto;" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<div class="trial-banner" id="trialBanner">
+  <b>View only</b><span id="trialWhere"></span> — browse every pothole PowerFix has logged, with its full photo timeline. This account cannot report, change or delete anything.
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="map" onclick="switchTab('map')">Map · Ruta Crítica</button>
+  <button class="tab-btn" data-tab="log" onclick="switchTab('log')">Report a Pothole</button>
+</div>
+
+<div id="view-map" class="view active">
+  <div class="filter-row">
+    <select id="fltStatus" onchange="renderMapAndList()">
+      <option value="">All potholes</option>
+      <option value="reported">Open (red)</option>
+      <option value="fixed">Fixed (green)</option>
+    </select>
+    <select id="fltCountry" onchange="document.getElementById('fltCity').value='';renderMapAndList()"></select>
+    <select id="fltCity" onchange="renderMapAndList()"></select>
+  </div>
+  <div class="summary-row">
+    <div class="summary-tile"><div class="n open-n" id="sumOpen">—</div><div class="l">Open potholes</div></div>
+    <div class="summary-tile"><div class="n fixed-n" id="sumFixed">—</div><div class="l">Fixed</div></div>
+    <div class="summary-tile"><div class="n" id="sumOldest">—</div><div class="l">Oldest open (days)</div></div>
+  </div>
+  <div id="listMap"></div>
+  <div id="fixList"></div>
+</div>
+
+<div id="view-log" class="view">
+  <div class="setup-banner" id="setupBanner">
+    This map is locked. <b onclick="openLogin()">Sign in</b> with the password Ariel gave you to open it.
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>Address, place, or business — or paste coordinates</label>
+      <div class="search-bar">
+        <input id="fSearch" type="text" autocomplete="off" placeholder="e.g. Hotel El Panamá, Calle 50, or 8.9917, -79.5297" oninput="searchTyped()" onkeydown="if(event.key==='Enter'){event.preventDefault();searchPlace();}"/>
+        <button class="btn" id="searchBtn" onclick="searchPlace()">🔍 Search</button>
+      </div>
+      <div id="searchResults" class="search-results"></div>
+      <div class="field-hint">Suggestions appear as you type — hotels, businesses, and streets, like Google Maps. Pick one, then fine-tune by clicking the map or dragging the pin.</div>
+    </div>
+    <button class="btn secondary" style="margin-bottom:12px;" onclick="useMyLocation(this)">📍 Use my current location</button>
+    <div id="pickMap"></div>
+    <div id="coordReadout" class="coord-readout unset">No location set yet — type an address above, click the map, or drag the pin.</div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>Photos of the pothole (required — 1 to 3)</label>
+      <input id="fPhotos" type="file" accept="image/*,video/*" multiple onchange="photoCountHint()"/>
+      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Country</label>
+        <input id="fCountry" type="text" list="countryList" placeholder="Panama"/>
+        <datalist id="countryList">
+          <option>Panama</option><option>Guatemala</option><option>Honduras</option>
+          <option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option>
+          <option>Colombia</option><option>República Dominicana</option><option>México</option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label>City</label>
+        <input id="fCity" type="text" placeholder="Panama City"/>
+      </div>
+    </div>
+    <div class="field-hint" style="margin:-8px 0 16px;">Country and city fill in automatically when you set the pin — correct them if needed.</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Date reported</label>
+        <input id="fDate" type="date"/>
+      </div>
+      <div class="field">
+        <label>Label (optional)</label>
+        <input id="fLabel" type="text" placeholder="e.g. Calle 50, San Francisco"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>Notes (optional)</label>
+      <textarea id="fNotes" placeholder="Size, lane, hazard level, anything worth remembering about this pothole"></textarea>
+    </div>
+    <button class="btn" id="logBtn" onclick="logFix()">Report Pothole</button>
+    <div id="logMsg"></div>
+  </div>
+</div>
+
+<div class="footer">LOGPOTHOLE · POWERFIX · GOVERNMENT STAFF USE ONLY</div>
+
+<div id="showOverlay">
+  <button id="showClose" onclick="stopShow()">✕</button>
+  <button id="showPrev" class="show-nav" onclick="navShow(-1)">‹</button>
+  <button id="showNext" class="show-nav" onclick="navShow(1)">›</button>
+  <img id="showImg" alt=""/>
+  <div id="showDay"></div>
+  <div id="showSub"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const REPO_OWNER = 'arlito331';
+const REPO_NAME  = 'fixwatch';
+const DATA_PATH  = 'data/fixes.enc';   // AES-GCM ciphertext (see tools/encrypt_data.py)
+// Local dev (python3 -m http.server) serves the repo files directly. The
+// protocol check keeps the iOS app (capacitor://localhost) on the real URLs.
+const RAW_BASE   = (location.protocol === 'http:' && ['localhost','127.0.0.1'].includes(location.hostname))
+  ? './'
+  : `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/`;
+const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/`;
+
+let fixes = [];
+let pickedLatLng = null;
+let pickMap, pickMarker, listMap;
+let listMarkers = [];
+let openFixId = null;
+
+// ---------- access code (GitHub token under the hood) ----------
+// Two codes exist: the master code (full control) and the field code — the
+// same code prefixed "field:" — which only lets people report potholes and
+// add photos. The restriction is enforced by the app, not by GitHub.
+function getGhToken(){ return localStorage.getItem('fw_gh_token'); }
+function setGhToken(t){ localStorage.setItem('fw_gh_token', t); }
+
+// ---------- encryption layer ----------
+// Everything data-shaped in the repo is AES-256-GCM ciphertext (iv || ct).
+// One master data key encrypts fixes + photos; data/keys.json holds that key
+// wrapped under each person's password (PBKDF2-SHA256), so signing in IS the
+// decryption. Without a valid password the repo is just random bytes.
+const KEYS_PATH = 'data/keys.json';
+function bytesFromB64(str){ return Uint8Array.from(atob(str), c => c.charCodeAt(0)); }
+function b64FromBytes(buf){
+  const u = new Uint8Array(buf); let out = '';
+  for (let i = 0; i < u.length; i += 0x8000) out += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+let _dataKey = null; // imported CryptoKey cache
+async function dataKey(){
+  if (_dataKey) return _dataKey;
+  const b = localStorage.getItem('fw_dk');
+  if (!b) return null;
+  _dataKey = await crypto.subtle.importKey('raw', bytesFromB64(b), 'AES-GCM', false, ['encrypt','decrypt']);
+  return _dataKey;
+}
+function hasDataKey(){ return !!localStorage.getItem('fw_dk'); }
+async function aesDecrypt(bytes){
+  const k = await dataKey();
+  if (!k) throw new Error('locked');
+  return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM', iv: bytes.slice(0,12)}, k, bytes.slice(12)));
+}
+async function aesEncrypt(bytes){
+  const k = await dataKey();
+  if (!k) throw new Error('locked');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, k, bytes));
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv); out.set(ct, iv.length);
+  return out;
+}
+async function decryptJSONBytes(bytes){ return JSON.parse(new TextDecoder().decode(await aesDecrypt(bytes))); }
+async function encryptJSONToB64(obj, replacer){
+  return b64FromBytes(await aesEncrypt(new TextEncoder().encode(JSON.stringify(obj, replacer, 2))));
+}
+async function encryptB64Image(b64){ return b64FromBytes(await aesEncrypt(bytesFromB64(b64))); }
+// Try the typed password against every wrapped copy of the master key.
+// Success returns {user, role, country, k}; who has an account stays secret.
+async function unlockWithPassword(pass){
+  let cfg;
+  try { cfg = await (await fetch(`${RAW_BASE}${KEYS_PATH}?t=${Date.now()}`)).json(); }
+  catch (e){ return null; }
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const kek = await crypto.subtle.deriveKey(
+    {name:'PBKDF2', hash:'SHA-256', salt: bytesFromB64(cfg.kdf.salt), iterations: cfg.kdf.iter},
+    km, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  for (const e of cfg.entries){
+    try {
+      const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv: bytesFromB64(e.iv)}, kek, bytesFromB64(e.ct));
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (_){ /* not this entry — keep trying */ }
+  }
+  return null;
+}
+// Photos decrypt on demand into object URLs, once each per session.
+const _photoURLs = new Map();
+function photoURL(p){
+  if (!_photoURLs.has(p.path)){
+    _photoURLs.set(p.path, (async () => {
+      const res = await fetch(RAW_BASE + p.path + '.enc');
+      if (!res.ok) throw new Error('photo fetch failed');
+      const pt = await aesDecrypt(new Uint8Array(await res.arrayBuffer()));
+      return URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
+    })().catch(err => { _photoURLs.delete(p.path); throw err; }));
+  }
+  return _photoURLs.get(p.path);
+}
+function hydrateEncImages(root){
+  (root || document).querySelectorAll('img[data-encpath]').forEach(img => {
+    const path = img.dataset.encpath; delete img.dataset.encpath;
+    photoURL({path}).then(u => { img.src = u; }).catch(() => {});
+  });
+}
+function isField(){ return localStorage.getItem('fw_role') === 'field'; }
+// Accounts live in data/keys.json as wrapped copies of the master data key —
+// no usernames or passwords appear anywhere in this file. A login is simply
+// the password that unwraps one of those copies (see unlockWithPassword).
+// Add or retire a person by re-running tools/encrypt_data.py with an updated
+// password sheet (kept outside the repo in APPS/KEYS/).
+// Real GitHub codes all start with gh… — used to tell a staff code apart from
+// a mistyped tryout password instead of accepting nonsense as a credential.
+function looksLikeCode(s){ return /^gh[a-z]_|^github_pat_/i.test(s); }
+function isTryout(){ const r = localStorage.getItem('fw_role'); return r === 'tryout' || r === 'factory'; }
+// Tryout accounts are partner logins: they look, they never touch. Every
+// write path checks this, so a viewer cannot report, upload, edit or delete.
+function isViewer(){ return isTryout(); }
+function isMaster(){ return !!getGhToken() && localStorage.getItem('fw_role') === 'master'; }
+
+// Territory accounts: one country each, may report potholes and add photos,
+// may not change or erase anything that already exists. Enforced by the app,
+// exactly like the field role.
+const TERRITORIES = {
+  'rd':        {country: 'República Dominicana', chip: 'RD'},
+  'do':        {country: 'República Dominicana', chip: 'RD'},
+  'dominicana':{country: 'República Dominicana', chip: 'RD'},
+  'republica dominicana': {country: 'República Dominicana', chip: 'RD'},
+  'ecuador':   {country: 'Ecuador',   chip: 'ECUADOR'},
+  'ec':        {country: 'Ecuador',   chip: 'ECUADOR'},
+  'guatemala': {country: 'Guatemala', chip: 'GUATEMALA'},
+  'gt':        {country: 'Guatemala', chip: 'GUATEMALA'},
+};
+function isTerritory(){ return localStorage.getItem('fw_role') === 'territory' && !!getGhToken(); }
+// Country limit applies to both kinds of country account: the staff-code one
+// that writes for real, and the tryout one whose work stays on the device.
+function myCountry(){ return localStorage.getItem('fw_country') || null; }
+
+function promptToken(){ openLogin(); }
+function openLogin(){
+  const back = document.getElementById('loginBack');
+  document.getElementById('lgMsg').textContent = '';
+  document.getElementById('lgPass').value = '';
+  document.getElementById('lgOut').style.display = hasDataKey() ? 'inline-block' : 'none';
+  back.classList.add('open');
+  setTimeout(() => document.getElementById('lgUser').focus(), 50);
+}
+function closeLogin(){ document.getElementById('loginBack').classList.remove('open'); }
+function signOut(){
+  localStorage.removeItem('fw_dk'); _dataKey = null;
+  localStorage.removeItem('fw_gh_token');
+  localStorage.removeItem('fw_role');
+  localStorage.removeItem('fw_country');
+  localStorage.removeItem('fw_user');
+  closeLogin();
+  updateGearDot();
+  loadFixes();
+}
+async function doLogin(){
+  const pRaw = document.getElementById('lgPass').value.trim();
+  const msg = document.getElementById('lgMsg');
+  const fail = t => { msg.className = 'login-msg err'; msg.textContent = t; };
+  if (!pRaw) return fail('Enter your password.');
+
+  msg.className = 'login-msg'; msg.textContent = 'Checking…';
+  await new Promise(r => setTimeout(r, 30)); // let the message paint before PBKDF2 blocks the thread
+  const acct = await unlockWithPassword(pRaw);
+  if (!acct) return fail('That password is not right.');
+
+  localStorage.setItem('fw_dk', acct.k); _dataKey = null;
+  localStorage.setItem('fw_role', acct.role);
+  localStorage.setItem('fw_user', acct.user);   // the account name, never the password
+  if (acct.country) localStorage.setItem('fw_country', acct.country);
+  else localStorage.removeItem('fw_country');
+  if (acct.role === 'tryout') localStorage.removeItem('fw_gh_token');
+
+  closeLogin();
+  updateGearDot();
+  loadFixes();
+  // Writing roles still need the GitHub access code on top of the password.
+  if (acct.role !== 'tryout' && !getGhToken()) promptAccessCode();
+}
+function promptAccessCode(){
+  const t = prompt('Signed in. To also SAVE changes, paste the PowerFix access code (starts with gh…).\nCancel to browse read-only on this device.');
+  if (t && looksLikeCode(t.trim())){ setGhToken(t.trim()); updateGearDot(); loadFixes(); }
+}
+function updateGearDot(){
+  const has = hasDataKey();
+  document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
+  document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
+  const chip = document.getElementById('roleChip');
+  if (isTerritory()){
+    const t = Object.values(TERRITORIES).find(x => x.country === myCountry());
+    chip.style.display = 'inline-block'; chip.textContent = t ? t.chip : 'TERRITORY';
+    chip.title = `${myCountry()} access: report potholes and add photos in your country only`;
+  } else if (getGhToken() && isField()){
+    chip.style.display = 'inline-block'; chip.textContent = 'FIELD';
+    chip.title = 'Field access: report potholes and add photos only';
+  } else if (isTryout()){
+    const who = localStorage.getItem('fw_user');
+    chip.style.display = 'inline-block'; chip.textContent = who ? `VIEW ONLY · ${who.toUpperCase()}` : 'VIEW ONLY';
+    chip.title = myCountry()
+      ? `Read-only access to ${myCountry()} — browse potholes and photos, nothing can be changed`
+      : 'Read-only access to every country — browse potholes and photos, nothing can be changed';
+  } else {
+    chip.style.display = 'none'; chip.textContent = ''; chip.title = '';
+  }
+  document.getElementById('trialBanner').style.display = isTryout() ? 'block' : 'none';
+  const where = document.getElementById('trialWhere');
+  if (where) where.textContent = (isTryout() && myCountry()) ? ` · ${myCountry()}` : '';
+  applyTerritoryUI();
+  applyViewerUI();
+}
+
+// Read-only accounts (the partner logins) get no reporting tab at all.
+function applyViewerUI(){
+  const logTab = document.querySelector('.tab-btn[data-tab="log"]');
+  if (!logTab) return;
+  logTab.style.display = isViewer() ? 'none' : '';
+  if (isViewer() && logTab.classList.contains('active')) switchTab('map');
+}
+
+// Lock the country controls for territory users so their view and their new
+// reports can only ever be their own country.
+function applyTerritoryUI(){
+  const c = myCountry();
+  const fltC = document.getElementById('fltCountry');
+  const inC = document.getElementById('fCountry');
+  if (c){
+    inC.value = c; inC.readOnly = true; inC.style.opacity = '.6';
+    fltC.disabled = true;
+  } else {
+    inC.readOnly = false; inC.style.opacity = '';
+    fltC.disabled = false;
+  }
+}
+
+// Viewer accounts used to be able to log device-only "trial" reports and
+// photos. They are read-only now, so anything left on a device from that
+// period is cleared the next time the app opens.
+function purgeTrialData(){
+  localStorage.removeItem('fw_trial_fixes');
+  localStorage.removeItem('fw_trial_photos');
+}
+
+// A 401 from GitHub means the stored access code expired or was revoked.
+// Turn the gear dot red and show the banner so the fix is obvious.
+function markTokenExpired(){
+  // Drop the dead code so the next sign-in (or the banner click) asks for a
+  // fresh one — otherwise the stored corpse blocks the prompt forever.
+  localStorage.removeItem('fw_gh_token');
+  document.getElementById('gearDot').className = 'gear-dot';
+  const b = document.getElementById('setupBanner');
+  b.style.display = 'block';
+  b.innerHTML = 'Your access code has <b>expired or was revoked</b> — <b onclick="promptAccessCode()">click here</b> to paste the new code (ask Ariel for it).';
+}
+const TOKEN_EXPIRED_MSG = 'Access code expired or invalid — tap the gear icon (top right) and paste the new code.';
+
+async function ghFetch(url, opts={}){
+  const token = getGhToken();
+  return fetch(url, {
+    ...opts,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.body ? {'Content-Type':'application/json'} : {}),
+      ...(opts.headers||{}),
+    },
+  });
+}
+
+// Rapid back-to-back commits (each photo file, then fixes.json) sometimes
+// race on the branch and GitHub answers 409/422 even though nothing is
+// wrong — retrying with a fresh sha after a short pause heals it. Without
+// this, the second photo of an upload "failed" while actually being saved.
+async function ghPutFile(path, b64, message, sha){
+  for (let attempt = 0; ; attempt++){
+    const res = await ghFetch(API_BASE + path, {
+      method: 'PUT',
+      body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
+    });
+    if (res.ok) return res.json();
+    if (res.status === 401){
+      markTokenExpired();
+      throw new Error(TOKEN_EXPIRED_MSG);
+    }
+    if ((res.status === 409 || res.status === 422) && attempt < 3){
+      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+      const g = await ghFetch(`${API_BASE}${path}?ref=main`);
+      if (g.ok) sha = (await g.json()).sha;
+      continue;
+    }
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `save failed (${res.status})`);
+  }
+}
+
+async function ghDeleteFile(path, message){
+  const g = await ghFetch(`${API_BASE}${path}?ref=main`);
+  if (g.status === 404) return; // already gone
+  if (g.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
+  if (!g.ok) throw new Error(`read failed (${g.status})`);
+  const sha = (await g.json()).sha;
+  for (let attempt = 0; ; attempt++){
+    const res = await ghFetch(API_BASE + path, {
+      method: 'DELETE',
+      body: JSON.stringify({message, sha, branch: 'main'}),
+    });
+    if (res.ok || res.status === 404) return;
+    if ((res.status === 409 || res.status === 422) && attempt < 3){
+      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+      continue;
+    }
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `delete failed (${res.status})`);
+  }
+}
+
+// ---------- tabs ----------
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${name}`));
+  if (name === 'log') setTimeout(() => pickMap.invalidateSize(), 50);
+  if (name === 'map') setTimeout(() => listMap.invalidateSize(), 50);
+}
+
+// ---------- day math ----------
+function daysSince(dateStr){
+  const fixDate = new Date(dateStr + 'T00:00:00Z');
+  const t = new Date();
+  const todayUTC = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
+  return Math.max(0, Math.round((todayUTC - fixDate) / 86400000));
+}
+// Photo "Day N" counts from the report date for open potholes, from the fix
+// date once fixed (so Day 0 = the day of the repair, matching the old data).
+function baseDate(f){ return f.fix_date || f.report_date || (f.logged_at || '').slice(0, 10); }
+function dayNumber(fix, dateStr){
+  const a = new Date(baseDate(fix) + 'T00:00:00Z');
+  const b = new Date(dateStr + 'T00:00:00Z');
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+function isFixed(f){ return f.status === 'fixed'; }
+function ageDays(f){ return daysSince(isFixed(f) ? f.fix_date : f.report_date); }
+
+// ---------- pothole numbering (LP-001, LP-002, …) ----------
+function fixNum(f){
+  if (f.num) return f.num;
+  const order = [...fixes].sort((a,b) => (a.logged_at||'').localeCompare(b.logged_at||''));
+  return order.findIndex(x => x.id === f.id) + 1;
+}
+function fixTag(f){ return 'LP-' + String(fixNum(f)).padStart(3, '0'); }
+
+// photoSrc is gone: photos are ciphertext in the repo — see photoURL() above.
+
+// ---------- image compression + GPS-camera-style stamp ----------
+function loadImg(src){
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('could not read image'));
+    im.src = src;
+  });
+}
+
+async function compressImage(file, stamp, maxW=1280, quality=0.82){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const scale = Math.min(1, maxW / img.width);
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    if (stamp) await drawStamp(ctx, w, h, stamp);
+    return c.toDataURL('image/jpeg', quality).split(',')[1];
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// Street-level address for the stamp, cached per pothole (never persisted).
+const addrCache = {};
+async function stampAddress(fix){
+  if (addrCache[fix.id]) return addrCache[fix.id];
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${fix.lat}&lon=${fix.lng}&format=json&zoom=18&accept-language=es`);
+    addrCache[fix.id] = (await r.json()).address || {};
+  } catch (e){ addrCache[fix.id] = {}; }
+  return addrCache[fix.id];
+}
+
+function fmtEsDate(d){
+  return new Date(d + 'T00:00:00Z').toLocaleDateString('es-DO', {day:'numeric', month:'short', year:'numeric', timeZone:'UTC'})
+    .replace(/ de /g, ' ').replace(/\./g, ''); // "11 may 2026", GPS-camera style
+}
+function fmtEsTime(t){
+  const [H, M, S] = t.split(':').map(Number);
+  return new Date(Date.UTC(2000, 0, 1, H, M, S)).toLocaleTimeString('es-DO',
+    {hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true, timeZone:'UTC'});
+}
+
+function buildStampLines(fix, addr, date, time){
+  const lines = [fmtEsDate(date) + (time ? ' ' + fmtEsTime(time) : '')];
+  const road = addr.road || addr.pedestrian || fix.label || '';
+  const area = addr.suburb || addr.borough || addr.municipality || addr.town || addr.village || '';
+  const city = fix.city || addr.city || addr.state || '';
+  const country = fix.country || addr.country || '';
+  [road, area, city, country].forEach(s => { if (s && !lines.includes(s)) lines.push(s); });
+  lines.push(`Lat: ${fix.lat.toFixed(6)}  Lng: ${fix.lng.toFixed(6)}`);
+  if (fix.alt != null) lines.push(`Altitud: ${fix.alt}msnm`);
+  if (fix.speed_kmh != null) lines.push(`Velocidad: ${fix.speed_kmh}km/h`);
+  lines.push(`Número de índice: ${fixNum(fix)}`);
+  return lines;
+}
+
+// Slippy-map tile math (Web Mercator)
+function tileXY(lat, lng, z){
+  const n = 2 ** z;
+  return {
+    x: (lng + 180) / 360 * n,
+    y: (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n,
+  };
+}
+
+// Small map inset with a pin, bottom-left, like GPS camera apps.
+// Tiles come from CARTO's CORS-enabled raster CDN; any failure skips the inset.
+async function drawMapInset(ctx, W, H, lat, lng){
+  const iw = Math.round(W * 0.26), ih = Math.round(iw * 0.85);
+  const x0 = 0, y0 = H - ih;
+  const z = 15, T = 256;
+  const c = tileXY(lat, lng, z);
+  const cpx = c.x * T, cpy = c.y * T;
+  const left = cpx - iw / 2, top = cpy - ih / 2;
+  const tiles = [];
+  for (let tx = Math.floor(left / T); tx <= Math.floor((left + iw) / T); tx++)
+    for (let ty = Math.floor(top / T); ty <= Math.floor((top + ih) / T); ty++)
+      tiles.push({tx, ty});
+  const imgs = await Promise.race([
+    Promise.all(tiles.map(t =>
+      loadImg(`https://a.basemaps.cartocdn.com/rastertiles/voyager/${z}/${t.tx}/${t.ty}.png`).catch(() => null))),
+    new Promise(res => setTimeout(() => res(null), 5000)),
+  ]);
+  if (!imgs || imgs.every(i => !i)) return; // offline / CORS issue — no inset
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0, y0, iw, ih); ctx.clip();
+  ctx.fillStyle = '#e8e6e1'; ctx.fillRect(x0, y0, iw, ih);
+  tiles.forEach((t, i) => {
+    if (imgs[i]) ctx.drawImage(imgs[i], x0 + (t.tx * T - left), y0 + (t.ty * T - top), T, T);
+  });
+  // red pin at the pothole
+  const px = x0 + iw / 2, py = y0 + ih / 2, r = Math.max(6, Math.round(iw * 0.05));
+  ctx.beginPath(); ctx.moveTo(px, py);
+  ctx.lineTo(px - r * 0.8, py - r * 1.6); ctx.arc(px, py - r * 1.6, r * 0.8, Math.PI, 0);
+  ctx.lineTo(px, py); ctx.closePath();
+  ctx.fillStyle = '#E03131'; ctx.fill();
+  ctx.strokeStyle = '#7a1010'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(px, py - r * 1.6, r * 0.32, 0, Math.PI * 2); ctx.fillStyle = '#7a1010'; ctx.fill();
+  // attribution (required by the tile license)
+  ctx.font = `400 ${Math.max(8, Math.round(iw * 0.052))}px Helvetica, Arial`;
+  ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.textAlign = 'left';
+  ctx.fillText('© OpenStreetMap © CARTO', x0 + 4, y0 + ih - 4);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
+  ctx.strokeRect(x0 + 1, y0 + 1, iw - 2, ih - 2);
+}
+
+// Shared layout math for the text block (bottom-right): per-line font size
+// with shrink-to-fit, total width/height. Used by drawing and by re-stamping.
+function stampBlockMetrics(ctx, W, lines){
+  const M = Math.round(W * 0.028);
+  const insetW = Math.round(W * 0.26);
+  const maxLineW = W - insetW - M * 3;
+  const base = Math.max(16, Math.round(W * 0.038));
+  let w = 0, h = 0;
+  lines.forEach((ln, i) => {
+    let fs = i === 0 ? Math.round(base * 1.2) : base;
+    ctx.font = `700 ${fs}px Helvetica, Arial`;
+    while (fs > 11 && ctx.measureText(ln).width > maxLineW){
+      fs--; ctx.font = `700 ${fs}px Helvetica, Arial`;
+    }
+    w = Math.max(w, ctx.measureText(ln).width);
+    h += Math.round(fs * 1.22);
+  });
+  return {M, maxLineW, base, w, h};
+}
+
+function drawStampText(ctx, W, H, stamp){
+  const {M, maxLineW, base} = stampBlockMetrics(ctx, W, stamp.lines);
+  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  let y = H - M;
+  for (let i = stamp.lines.length - 1; i >= 0; i--){
+    let fs = i === 0 ? Math.round(base * 1.2) : base; // datetime line biggest
+    ctx.font = `700 ${fs}px Helvetica, Arial`;
+    while (fs > 11 && ctx.measureText(stamp.lines[i]).width > maxLineW){
+      fs--; ctx.font = `700 ${fs}px Helvetica, Arial`;
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.lineWidth = Math.max(2, Math.round(fs * 0.16));
+    ctx.fillStyle = '#fff';
+    ctx.strokeText(stamp.lines[i], W - M, y);
+    ctx.fillText(stamp.lines[i], W - M, y);
+    y -= Math.round(fs * 1.22);
+  }
+  ctx.textAlign = 'left';
+}
+
+async function drawStamp(ctx, W, H, stamp){
+  await drawMapInset(ctx, W, H, stamp.lat, stamp.lng);
+  drawStampText(ctx, W, H, stamp);
+}
+
+// Re-stamp a photo whose inspection date was edited. The pixels under the
+// old stamp are gone, so the fresh stamp sits on a dark plaque that covers
+// the old text block; the repo file is replaced (new path, old one deleted).
+async function restampPhoto(fix, p, oldDate){
+  let src = null;
+  try { // API copy is always fresh; the raw CDN can lag minutes behind
+    const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`);
+    if (r.ok){
+      const pt = await aesDecrypt(bytesFromB64((await r.json()).content.replace(/\n/g, '')));
+      src = URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
+    }
+  } catch (e){}
+  const img = await loadImg(src || await photoURL(p));
+  const W = img.width, H = img.height;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const addr = await stampAddress(fix);
+  const newLines = buildStampLines(fix, addr, p.date, p.time || null);
+  // Old block may be wider (it can carry a time we never stored) — size the
+  // plaque to the worst case of both so no old text peeks out.
+  const oldLines = buildStampLines(fix, addr, oldDate, p.time || '00:00:00');
+  const a = stampBlockMetrics(ctx, W, newLines), b = stampBlockMetrics(ctx, W, oldLines);
+  const M = a.M, pad = Math.round(M * 0.7);
+  const blockW = Math.min(a.maxLineW, Math.max(a.w, b.w)), blockH = Math.max(a.h, b.h);
+  ctx.beginPath();
+  const rx = W - M - blockW - pad, ry = H - M - blockH - pad, rw = blockW + pad * 2, rh = blockH + pad * 2 + Math.round(M * 0.3);
+  if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, Math.round(M * 0.4)); else ctx.rect(rx, ry, rw, rh);
+  // Near-opaque: the old white text must not ghost through the plaque
+  ctx.fillStyle = 'rgba(14,14,14,.97)';
+  ctx.fill();
+  drawStampText(ctx, W, H, {lat: fix.lat, lng: fix.lng, lines: newLines});
+  const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r.jpg`;
+  await ghPutFile(newPath + '.enc', await encryptB64Image(b64), `re-stamp photo: ${fix.id}`);
+  const oldPath = p.path;
+  p.path = newPath;
+  await ghDeleteFile(oldPath + '.enc', `remove old photo: ${fix.id}`).catch(() => {});
+}
+
+async function uploadPhotoItems(fix, items, progressCb){
+  progressCb && progressCb('Preparing stamp…');
+  const addr = await stampAddress(fix);
+  const added = [];
+  for (let i = 0; i < items.length; i++){
+    const {file, date, time} = items[i];
+    progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+    const stamp = {lat: fix.lat, lng: fix.lng, lines: buildStampLines(fix, addr, date, time)};
+    const b64 = await compressImage(file, stamp);
+    const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
+    await ghPutFile(path + '.enc', await encryptB64Image(b64), `photo: ${fix.id}`);
+    // time is kept so a later date edit can rebuild the stamp's datetime line
+    added.push({date, path, ...(time ? {time} : {})});
+  }
+  return added;
+}
+
+// ---------- photo date detection (EXIF, then file date, then today) ----------
+function readExifDate(file){
+  return new Promise(resolve => {
+    const fr = new FileReader();
+    fr.onerror = () => resolve(null);
+    fr.onload = () => {
+      try {
+        const v = new DataView(fr.result);
+        if (v.getUint16(0) !== 0xFFD8) return resolve(null);
+        let o = 2;
+        while (o + 4 <= v.byteLength){
+          const marker = v.getUint16(o);
+          const size = v.getUint16(o + 2);
+          if (marker === 0xFFE1 && o + 8 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
+            const t = o + 10;
+            const little = v.getUint16(t) === 0x4949;
+            const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
+            const readAscii = entry => {
+              const n = g32(entry + 4);
+              const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
+              let s = '';
+              for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
+              return s;
+            };
+            const scanIFD = (ifd, want) => {
+              const cnt = g16(ifd);
+              for (let e = 0; e < cnt; e++){
+                const entry = ifd + 2 + e * 12;
+                if (g16(entry) === want) return entry;
+              }
+              return null;
+            };
+            const ifd0 = t + g32(t + 4);
+            let dateStr = null;
+            const exifPtr = scanIFD(ifd0, 0x8769);
+            if (exifPtr){
+              const dto = scanIFD(t + g32(exifPtr + 8), 0x9003);
+              if (dto) dateStr = readAscii(dto);
+            }
+            if (!dateStr){
+              const dt = scanIFD(ifd0, 0x0132);
+              if (dt) dateStr = readAscii(dt);
+            }
+            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+            return resolve(m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null);
+          }
+          if ((marker & 0xFF00) !== 0xFF00) break;
+          o += 2 + size;
+        }
+        resolve(null);
+      } catch (e){ resolve(null); }
+    };
+    fr.readAsArrayBuffer(file.slice(0, 256 * 1024));
+  });
+}
+
+async function bestPhotoDateTime(file){
+  const exif = await readExifDate(file);
+  if (exif && exif.date) return {date: exif.date, time: exif.time};
+  if (file.lastModified){
+    const d = new Date(file.lastModified);
+    if (!isNaN(d)) return {date: d.toISOString().slice(0, 10),
+      time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`};
+  }
+  const now = new Date();
+  return {date: now.toISOString().slice(0, 10),
+    time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`};
+}
+async function bestPhotoDate(file){ return (await bestPhotoDateTime(file)).date; }
+
+// ---------- video → still frame ----------
+// Some reports arrive as a video. Grab one clear frame (~1s in, or a quarter
+// through for very short clips) and hand it to the normal photo pipeline as a
+// JPEG, keeping the video's file date so the stamp is right.
+function videoToImageFile(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    let done = false;
+    const fail = m => { if (done) return; done = true; URL.revokeObjectURL(url); reject(new Error(m)); };
+    v.onloadedmetadata = () => {
+      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
+      v.currentTime = Math.min(1, d * 0.25);
+    };
+    v.onseeked = () => {
+      if (done) return;
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0);
+        c.toBlob(blob => {
+          if (!blob) return fail('could not read video frame');
+          done = true; URL.revokeObjectURL(url);
+          const base = (file.name || 'video').replace(/\.[^.]+$/, '');
+          resolve(new File([blob], base + '.jpg', {type: 'image/jpeg', lastModified: file.lastModified || Date.now()}));
+        }, 'image/jpeg', 0.92);
+      } catch (e){ fail('could not read video frame'); }
+    };
+    v.onerror = () => fail('could not read video');
+    v.src = url;
+  });
+}
+function isVideo(file){ return (file.type || '').startsWith('video/') || /\.(mp4|mov|m4v|avi|webm|3gp|mkv)$/i.test(file.name || ''); }
+// Turn a picked file into a photo file: extract a frame if it's a video.
+async function asImageFile(file, progressCb){
+  if (isVideo(file)){ progressCb && progressCb('Grabbing a frame from the video…'); return videoToImageFile(file); }
+  return file;
+}
+
+// ---------- staged update photos (one date per photo) ----------
+const staged = {};
+async function stageFiles(fixId){
+  const input = document.getElementById(`upFiles-${fixId}`);
+  const listEl = document.getElementById(`upList-${fixId}`);
+  const fix = fixes.find(x => x.id === fixId);
+  const files = Array.from(input.files);
+  staged[fixId] = [];
+  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
+  for (const f0 of files){
+    let f;
+    try { f = await asImageFile(f0); }
+    catch (e){
+      const err = document.createElement('div');
+      err.className = 'stage-row'; err.style.color = 'var(--red)';
+      err.textContent = `⚠ Couldn't read ${f0.name || 'that file'} — skipped.`;
+      listEl.appendChild(err); continue;
+    }
+    const {date, time} = await bestPhotoDateTime(f);
+    const i = staged[fixId].length;
+    staged[fixId].push({file: f, date, time});
+    const row = document.createElement('div');
+    row.className = 'stage-row';
+    row.innerHTML = `<span class="sr-name">${isVideo(f0) ? '🎬' : '📷'} ${esc(f0.name)}</span>
+      <input type="date" value="${date}" onclick="event.stopPropagation()"
+        onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
+      <span class="sr-day">Day ${dayNumber(fix, date)}</span>`;
+    listEl.appendChild(row);
+  }
+}
+
+// ---------- fixes.json read-modify-write ----------
+async function commitFixes(message){
+  const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+  let sha = null, remote = null;
+  if (getRes.ok){
+    const d = await getRes.json();
+    sha = d.sha;
+    try { remote = await decryptJSONBytes(bytesFromB64(d.content.replace(/\n/g,''))); } catch (e){}
+  }
+  else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
+  else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
+
+  let out = fixes;
+  // A territory account only holds its own country in memory, so writing that
+  // list straight out would erase every other country. Merge instead: their
+  // records overwrite, everyone else's pass through untouched.
+  if (myCountry() && Array.isArray(remote)){
+    const mineById = new Map(out.map(f => [f.id, f]));
+    const merged = remote.map(f => mineById.has(f.id) ? mineById.get(f.id) : f);
+    const remoteIds = new Set(remote.map(f => f.id));
+    out.forEach(f => { if (!remoteIds.has(f.id)) merged.push(f); });
+    out = merged;
+  }
+  // _-prefixed keys are transient UI state (e.g. _oldDate) — never persisted
+  const b64 = await encryptJSONToB64(out, (k, v) => k.startsWith('_') ? undefined : v);
+  await ghPutFile(DATA_PATH, b64, message, sha);
+}
+
+// ---------- share location ----------
+function shareLoc(fixId, app){
+  const f = fixes.find(x => x.id === fixId);
+  if (!f) return;
+  const url = app === 'waze'
+    ? `https://waze.com/ul?ll=${f.lat},${f.lng}&navigate=yes`
+    : `https://www.google.com/maps/search/?api=1&query=${f.lat}%2C${f.lng}`;
+  window.open(url, '_blank');
+}
+function shareLocSheet(fixId){
+  const f = fixes.find(x => x.id === fixId);
+  if (!f) return;
+  navigator.share({
+    title: `${fixTag(f)} · ${f.label || 'Pothole'}`,
+    text: `${f.label || 'Pothole'} — ${[f.city, f.country].filter(Boolean).join(', ')}`,
+    url: `https://www.google.com/maps/search/?api=1&query=${f.lat}%2C${f.lng}`,
+  }).catch(() => {});
+}
+
+// ---------- master editing: fields, photo delete, pothole delete ----------
+let editFixId = null;
+function startFixEdit(fixId){ editFixId = fixId; openFixId = fixId; renderMapAndList(); }
+function cancelFixEdit(){ editFixId = null; renderMapAndList(); }
+
+async function saveFixEdits(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  const val = id => { const el = document.getElementById(`${id}-${fixId}`); return el ? el.value.trim() : null; };
+  const report = val('eReport');
+  if (!report){ msgEl.className = 'row-msg err'; msgEl.textContent = 'The report date cannot be empty.'; return; }
+  const prev = {label: fix.label, country: fix.country, city: fix.city, notes: fix.notes, report_date: fix.report_date, fix_date: fix.fix_date};
+  fix.label = val('eLabel');
+  fix.country = normCountry(val('eCountry'));
+  fix.city = val('eCity');
+  fix.notes = val('eNotes');
+  fix.report_date = report;
+  if (isFixed(fix) && val('eFix')) fix.fix_date = val('eFix');
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
+  try {
+    await commitFixes(`edit info: ${fix.id}`);
+    editFixId = null;
+    renderMapAndList();
+  } catch (e) {
+    Object.assign(fix, prev);
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+async function deletePhoto(fixId, flatIdx){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const flat = [];
+  photoGroups(fix).forEach(g => g.photos.forEach(p => flat.push(p)));
+  const p = flat[flatIdx];
+  if (!p) return;
+  if (!confirm(`Delete this photo (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting photo…';
+  try {
+    if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+    fix.photos = fix.photos.filter(x => x !== p);
+    await commitFixes(`remove photo: ${fix.id}`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = 'Photo deleted.'; }
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not delete.';
+  }
+}
+
+async function deleteFix(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const n = (fix.photos || []).length;
+  if (!confirm(`Permanently delete ${fixTag(fix)} "${fix.label || 'Pothole'}"${n ? ` and its ${n} photo(s)` : ''}?\n\nThis cannot be undone.`)) return;
+  if (!confirm(`Really delete ${fixTag(fix)} forever? Last chance.`)) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting…';
+  try {
+    for (const p of (fix.photos || [])){
+      if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+    }
+    fixes = fixes.filter(f => f.id !== fixId);
+    await commitFixes(`deleted: ${fix.id}`);
+    if (openFixId === fixId) openFixId = null;
+    editFixId = null;
+    renderMapAndList();
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not delete.';
+  }
+}
+
+// ---------- pick map ----------
+function initPickMap(){
+  pickMap = L.map('pickMap', {zoomControl:true}).setView([9.0, -79.5], 6);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  }).addTo(pickMap);
+  pickMap.on('click', (e) => setPickedLocation(e.latlng.lat, e.latlng.lng));
+}
+
+let pickedGps = null; // altitude/speed, only when the GPS button set the pin
+function setPickedLocation(lat, lng, label, gps){
+  pickedLatLng = {lat, lng};
+  pickedGps = gps || null;
+  if (!pickMarker){
+    pickMarker = L.marker([lat, lng], {draggable:true}).addTo(pickMap);
+    pickMarker.on('dragend', () => {
+      const p = pickMarker.getLatLng();
+      pickedLatLng = {lat: p.lat, lng: p.lng};
+      pickedGps = null; // pin moved away from the GPS reading
+      renderCoordReadout();
+    });
+  } else {
+    pickMarker.setLatLng([lat, lng]);
+  }
+  pickMap.setView([lat, lng], Math.max(pickMap.getZoom(), 15));
+  if (label) document.getElementById('fLabel').value = document.getElementById('fLabel').value || label;
+  renderCoordReadout();
+  reverseFill(lat, lng);
+}
+
+// Auto-fill country/city from the pin position (never overwrites what you typed).
+async function reverseFill(lat, lng){
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&accept-language=es`);
+    const a = (await r.json()).address || {};
+    const country = a.country || '';
+    const city = a.city || a.town || a.village || a.municipality || a.state || '';
+    const cEl = document.getElementById('fCountry'), ciEl = document.getElementById('fCity');
+    if (country && !cEl.value.trim()) cEl.value = country;
+    if (city && !ciEl.value.trim()) ciEl.value = city;
+  } catch (e) { /* offline geocoder is never blocking */ }
+}
+
+function renderCoordReadout(){
+  const el = document.getElementById('coordReadout');
+  if (!pickedLatLng){
+    el.textContent = 'No location set yet — type an address above, click the map, or drag the pin.';
+    el.classList.add('unset');
+  } else {
+    el.textContent = `${pickedLatLng.lat.toFixed(6)}, ${pickedLatLng.lng.toFixed(6)}`;
+    el.classList.remove('unset');
+  }
+}
+
+function useMyLocation(btn){
+  if (!navigator.geolocation){ alert('Location is not available on this device.'); return; }
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Locating…';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      setPickedLocation(pos.coords.latitude, pos.coords.longitude, null, {
+        alt: pos.coords.altitude != null ? Math.round(pos.coords.altitude * 10) / 10 : null,
+        speed_kmh: pos.coords.speed != null ? Math.round(pos.coords.speed * 36) / 10 : 0,
+      });
+      btn.textContent = orig; btn.disabled = false;
+    },
+    err => { alert('Could not get location: ' + err.message); btn.textContent = orig; btn.disabled = false; },
+    {enableHighAccuracy: true, timeout: 15000}
+  );
+}
+
+function parseCoordString(str){
+  const m = str.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return {lat, lng};
+}
+
+// Live suggestions (hotels, businesses, streets — any OSM place), biased
+// toward the area currently visible on the pick map, like Google Maps.
+let searchDebounce = null, searchSeq = 0, lastResults = [];
+
+function searchTyped(){
+  clearTimeout(searchDebounce);
+  const q = document.getElementById('fSearch').value.trim();
+  if (q.length < 3 || parseCoordString(q)){ renderSearchResults([]); return; }
+  searchDebounce = setTimeout(() => runSearch(q, false), 400);
+}
+
+async function runSearch(query, fromButton){
+  const seq = ++searchSeq;
+  const box = document.getElementById('searchResults');
+  box.innerHTML = '<div class="sr-loading">Searching…</div>';
+  try {
+    // viewbox (without bounded=1) ranks nearby matches first but still finds
+    // anything worldwide.
+    const b = pickMap.getBounds();
+    const vb = `&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`;
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&accept-language=es${vb}`);
+    const results = await res.json();
+    if (seq !== searchSeq) return; // a newer search superseded this one
+    renderSearchResults(results);
+    if (!results.length && fromButton){
+      box.innerHTML = '<div class="sr-loading">No results — try adding the city/country, paste exact coordinates, or click the map directly.</div>';
+    }
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    renderSearchResults([]);
+    if (fromButton) alert('Address lookup failed — click the map directly instead.');
+  }
+}
+
+function renderSearchResults(results){
+  lastResults = results;
+  const box = document.getElementById('searchResults');
+  box.innerHTML = results.map((r, i) => {
+    const parts = r.display_name.split(',');
+    return `<div class="sr-result" onclick="pickResult(${i})">
+      <div class="sr-main">${esc(parts[0].trim())}</div>
+      <div class="sr-sub">${esc(parts.slice(1).join(',').trim())}</div>
+    </div>`;
+  }).join('');
+}
+
+function pickResult(i){
+  const r = lastResults[i];
+  if (!r) return;
+  setPickedLocation(parseFloat(r.lat), parseFloat(r.lon), r.display_name.split(',')[0].trim());
+  document.getElementById('fSearch').value = r.display_name.split(',')[0].trim();
+  renderSearchResults([]);
+}
+
+async function searchPlace(){
+  clearTimeout(searchDebounce);
+  const query = document.getElementById('fSearch').value.trim();
+  if (!query) return;
+  const coords = parseCoordString(query);
+  if (coords){ setPickedLocation(coords.lat, coords.lng); renderSearchResults([]); return; }
+  await runSearch(query, true);
+  // Button/Enter with a single hit jumps straight there.
+  if (lastResults.length === 1) pickResult(0);
+}
+
+function photoCountHint(){
+  const n = document.getElementById('fPhotos').files.length;
+  const hint = document.getElementById('fPhotosHint');
+  if (!n){
+    hint.style.color = '';
+    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically.';
+  } else if (n > 3){
+    hint.style.color = 'var(--red)';
+    hint.textContent = `${n} files selected — the maximum is 3. Remove some before reporting.`;
+  } else {
+    const vids = [...document.getElementById('fPhotos').files].filter(isVideo).length;
+    hint.style.color = 'var(--accent)';
+    hint.textContent = `${n}/3 selected ✓${vids ? ` — ${vids} video(s) will become a still` : ''}`;
+  }
+}
+
+// ---------- log a fix ----------
+async function logFix(){
+  const msg = document.getElementById('logMsg');
+  const btn = document.getElementById('logBtn');
+  msg.className = ''; msg.textContent = '';
+
+  if (isViewer()){
+    msg.className = 'err'; msg.textContent = 'This account is view only — reporting is done by the PowerFix crew.';
+    return;
+  }
+  if (!getGhToken()){
+    msg.className = 'err'; msg.textContent = 'Run the one-time setup first (gear icon, top right).';
+    return;
+  }
+  if (!pickedLatLng){
+    msg.className = 'err'; msg.textContent = 'Set a location first — type an address, click the map, or drag the pin.';
+    return;
+  }
+  const dateVal = document.getElementById('fDate').value;
+  if (!dateVal){
+    msg.className = 'err'; msg.textContent = 'Pick the report date.';
+    return;
+  }
+  const photoInput = document.getElementById('fPhotos');
+  if (!photoInput.files.length){
+    msg.className = 'err'; msg.textContent = 'Add at least one photo or video of the pothole — a report needs a picture.';
+    return;
+  }
+  if (photoInput.files.length > 3){
+    msg.className = 'err'; msg.textContent = `Maximum 3 files per report — you selected ${photoInput.files.length}. Remove some and try again.`;
+    return;
+  }
+
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    lat: pickedLatLng.lat,
+    lng: pickedLatLng.lng,
+    label: document.getElementById('fLabel').value.trim(),
+    country: myCountry() || normCountry(document.getElementById('fCountry').value),
+    city: document.getElementById('fCity').value.trim(),
+    fix_date: null,
+    report_date: dateVal,
+    status: 'reported',
+    notes: document.getElementById('fNotes').value.trim(),
+    photos: [],
+    logged_at: new Date().toISOString(),
+  };
+  if (pickedGps){
+    if (pickedGps.alt != null) entry.alt = pickedGps.alt;
+    entry.speed_kmh = pickedGps.speed_kmh;
+  }
+  // Provisional index for the photo stamp; recomputed against fresh data below.
+  entry.num = fixes.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
+
+  btn.disabled = true;
+  try {
+    const items = [];
+    for (const f of Array.from(photoInput.files)){
+      const img = await asImageFile(f, t => { msg.textContent = t; });
+      items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
+    }
+
+    entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
+    msg.textContent = 'Saving…';
+
+    const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+    let sha = null, current = [];
+    if (getRes.ok){
+      const data = await getRes.json();
+      sha = data.sha;
+      current = await decryptJSONBytes(bytesFromB64(data.content.replace(/\n/g,'')));
+    } else if (getRes.status !== 404){
+      throw new Error(`read failed (${getRes.status})`);
+    }
+    entry.num = current.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
+    current.push(entry);
+    const b64 = await encryptJSONToB64(current);
+    await ghPutFile(DATA_PATH, b64, `report: ${entry.id}`, sha);
+
+    const mine = myCountry();
+    fixes = mine ? current.filter(f => fold(normCountry(f.country)) === fold(mine)) : current;
+    renderMapAndList();
+    msg.className = 'ok'; msg.textContent = `Pothole reported with ${entry.photos.length} photo(s) — it's now a red dot on the map.`;
+
+    document.getElementById('fSearch').value = '';
+    document.getElementById('fLabel').value = '';
+    document.getElementById('fCountry').value = '';
+    document.getElementById('fCity').value = '';
+    document.getElementById('fNotes').value = '';
+    document.getElementById('fPhotos').value = '';
+    pickedLatLng = null;
+    pickedGps = null;
+    if (pickMarker){ pickMap.removeLayer(pickMarker); pickMarker = null; }
+    renderCoordReadout();
+    document.getElementById('fDate').valueAsDate = new Date();
+  } catch (e) {
+    msg.className = 'err'; msg.textContent = e.message || 'Failed to save.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- add update photos to an existing fix ----------
+async function addUpdate(fixId){
+  const fix = fixes.find(f => f.id === fixId);
+  if (!fix) return;
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  msgEl.className = 'row-msg'; msgEl.textContent = '';
+
+  if (isViewer()){ msgEl.className='row-msg err'; msgEl.textContent='This account is view only — photos are added by the PowerFix crew.'; return; }
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Sign in first (gear icon).'; return; }
+  const items = staged[fixId] || [];
+  if (!items.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
+  if (items.some(it => !it.date)){ msgEl.className='row-msg err'; msgEl.textContent='Every photo needs a date.'; return; }
+
+  try {
+    // Field users add photos without changing status; for masters, an
+    // "after" photo on an open pothole marks it fixed.
+    const wasOpen = !isFixed(fix) && isMaster();
+    const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
+    fix.photos = (fix.photos || []).concat(added);
+    staged[fixId] = []; // photos are up — a retry after a failed save below must not re-upload them
+    // Any "after" photo upload on an open pothole marks it fixed — no
+    // verification for now, the upload itself is the proof.
+    if (wasOpen){
+      fix.status = 'fixed';
+      fix.fix_date = added.map(p => p.date).sort()[added.length - 1];
+    }
+    msgEl.textContent = 'Saving…';
+    await commitFixes(wasOpen
+      ? `fixed: ${fix.id}`
+      : `photo update: ${fix.id}`);
+    renderMapAndList();
+    const days = [...new Set(added.map(p => dayNumber(fix, p.date)))].sort((a,b) => a-b);
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){
+      m2.className = 'row-msg ok';
+      m2.textContent = wasOpen
+        ? `Marked fixed — ${added.length} after photo(s) attached. The dot is now green.`
+        : `Added ${added.length} photo(s) — Day ${days.join(', Day ')}.`;
+    }
+  } catch (e) {
+    // Photos that made it up are already in memory — re-render so the list
+    // stays truthful instead of hiding them until the row is reopened.
+    renderMapAndList();
+    const m3 = document.getElementById(`upMsg-${fixId}`);
+    if (m3){ m3.className = 'row-msg err'; m3.textContent = e.message || 'Upload failed.'; }
+  }
+}
+
+// ---------- manual Fixed toggle ----------
+async function markFixed(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  const dateEl = document.getElementById(`fixedDate-${fixId}`);
+  const date = (dateEl && dateEl.value) || new Date().toISOString().slice(0, 10);
+  fix.status = 'fixed';
+  fix.fix_date = date;
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
+  try {
+    await commitFixes(`fixed: ${fix.id}`);
+    renderMapAndList();
+  } catch (e) {
+    fix.status = 'reported'; fix.fix_date = null;
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+async function reopenFix(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  const prevDate = fix.fix_date;
+  fix.status = 'reported';
+  fix.fix_date = null;
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
+  try {
+    await commitFixes(`reopened: ${fix.id}`);
+    renderMapAndList();
+  } catch (e) {
+    fix.status = 'fixed'; fix.fix_date = prevDate;
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+// ---------- timeline helpers ----------
+function photoGroups(fix){
+  const groups = {};
+  (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
+  return Object.keys(groups).sort().map(d => ({date: d, day: dayNumber(fix, d), photos: groups[d]}));
+}
+
+// ---------- per-photo date editing on already-uploaded photos ----------
+function photoDateChanged(el){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === el.dataset.fix);
+  const p = fix && fix.photos.find(x => x.path === el.dataset.path);
+  if (!p) return;
+  if (p._oldDate === undefined) p._oldDate = p.date; // remember for the re-stamp
+  p.date = el.value;
+  if (p._oldDate === p.date) delete p._oldDate; // changed back to the original
+  el.classList.add('dirty');
+  const saveBtn = document.getElementById(`saveDates-${fix.id}`);
+  if (saveBtn) saveBtn.style.display = 'inline-block';
+}
+
+async function saveDates(fixId){
+  if (!isMaster()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  msgEl.className = 'row-msg'; msgEl.textContent = 'Saving date changes…';
+  try {
+    const changed = (fix.photos || []).filter(p => p._oldDate && p._oldDate !== p.date);
+    for (let i = 0; i < changed.length; i++){
+      msgEl.textContent = `Updating the stamp on photo ${i + 1}/${changed.length}…`;
+      await restampPhoto(fix, changed[i], changed[i]._oldDate);
+    }
+    (fix.photos || []).forEach(p => delete p._oldDate);
+    msgEl.textContent = 'Saving date changes…';
+    await commitFixes(`re-date photos: ${fix.id}`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className = 'row-msg ok'; m2.textContent = changed.length ? 'Dates saved — photo stamps updated to match.' : 'Dates saved.'; }
+  } catch (e) {
+    msgEl.className = 'row-msg err'; msgEl.textContent = e.message || 'Could not save.';
+  }
+}
+
+// ---------- country / city filters ----------
+// "Panamá" from the Spanish geocoder and "Panama" typed by hand are the same
+// country; filters compare accent- and case-insensitively so records never
+// hide under a variant spelling.
+function fold(s){ return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+const COUNTRY_CANON = {
+  'panama':'Panama', 'mexico':'México', 'guatemala':'Guatemala', 'honduras':'Honduras',
+  'el salvador':'El Salvador', 'nicaragua':'Nicaragua', 'costa rica':'Costa Rica',
+  'colombia':'Colombia', 'republica dominicana':'República Dominicana',
+  'dominican republic':'República Dominicana', 'ecuador':'Ecuador',
+};
+function normCountry(s){ s = (s || '').trim(); return COUNTRY_CANON[fold(s)] || s; }
+
+function populateFilters(){
+  const cSel = document.getElementById('fltCountry'), citySel = document.getElementById('fltCity');
+  const uniq = list => {
+    const seen = {};
+    list.forEach(v => { const k = fold(v); if (!seen[k]) seen[k] = v; });
+    return Object.values(seen).sort((a,b) => a.localeCompare(b));
+  };
+  const countries = uniq(fixes.map(f => normCountry(f.country) || 'Unspecified'));
+  const curC = cSel.value;
+  cSel.innerHTML = '<option value="">All countries</option>' + countries.map(c => `<option${fold(c)===fold(curC)?' selected':''}>${esc(c)}</option>`).join('');
+  const inC = fixes.filter(f => !cSel.value || fold(normCountry(f.country) || 'Unspecified') === fold(cSel.value));
+  const cities = uniq(inC.map(f => f.city || 'Unspecified'));
+  const curCity = citySel.value;
+  citySel.innerHTML = '<option value="">All cities</option>' + cities.map(c => `<option${fold(c)===fold(curCity)?' selected':''}>${esc(c)}</option>`).join('');
+}
+
+function filteredFixes(){
+  const s = document.getElementById('fltStatus').value;
+  const c = fold(document.getElementById('fltCountry').value), ci = fold(document.getElementById('fltCity').value);
+  return fixes.filter(f => (!s || f.status === s)
+    && (!c || fold(normCountry(f.country) || 'Unspecified') === c)
+    && (!ci || fold(f.city || 'Unspecified') === ci));
+}
+
+// ---------- photo viewer: lightbox with prev/next + timelapse autoplay ----------
+let showTimer = null, lbFrames = [], lbIdx = 0, lbFix = null;
+
+function fixFrames(fix){
+  const frames = [];
+  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
+  return frames;
+}
+function showFrame(){
+  const f = lbFrames[lbIdx];
+  photoURL(f.p).then(u => { document.getElementById('showImg').src = u; });
+  document.getElementById('showDay').textContent = `Day ${f.day}`;
+  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
+}
+function openLightbox(fixId, idx){
+  lbFix = fixes.find(f => f.id === fixId);
+  lbFrames = fixFrames(lbFix);
+  if (!lbFrames.length) return;
+  clearTimeout(showTimer); showTimer = null;
+  lbIdx = Math.min(idx || 0, lbFrames.length - 1);
+  document.getElementById('showOverlay').classList.add('on');
+  showFrame();
+}
+function navShow(d){
+  if (!lbFrames.length) return;
+  clearTimeout(showTimer); showTimer = null; // manual nav stops autoplay
+  lbIdx = (lbIdx + d + lbFrames.length) % lbFrames.length;
+  showFrame();
+}
+function playShow(fixId){
+  openLightbox(fixId, 0);
+  const step = () => {
+    showFrame();
+    lbIdx = (lbIdx + 1) % lbFrames.length;
+    showTimer = setTimeout(step, 1600);
+  };
+  step();
+}
+function stopShow(){
+  clearTimeout(showTimer); showTimer = null;
+  document.getElementById('showOverlay').classList.remove('on');
+}
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('showOverlay').classList.contains('on')) return;
+  if (e.key === 'ArrowRight') navShow(1);
+  else if (e.key === 'ArrowLeft') navShow(-1);
+  else if (e.key === 'Escape') stopShow();
+});
+
+// ---------- video export (client-side MP4/WebM) ----------
+async function exportVideo(fixId, btn){
+  const fix = fixes.find(f => f.id === fixId);
+  const groups = photoGroups(fix);
+  const frames = [];
+  groups.forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
+  if (!frames.length) return;
+
+  btn.disabled = true; const orig = btn.textContent;
+  try {
+    btn.textContent = 'Loading photos…';
+    const imgs = await Promise.all(frames.map(async f => loadImg(await photoURL(f.p))));
+
+    // Brand logo + optional soundtrack (drop assets/teaser_music.mp3 in the repo to enable music)
+    btn.textContent = 'Loading assets…';
+    const logo = await new Promise(res => {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => res(im); im.onerror = () => res(null);
+      im.src = RAW_BASE + 'assets/powerfix_logo.png';
+    });
+    let audioCtx = null, audioDest = null, audioSrc = null;
+    try {
+      let ar = await fetch(RAW_BASE + 'assets/teaser_music.m4a');
+      if (!ar.ok) ar = await fetch(RAW_BASE + 'assets/teaser_music.mp3');
+      if (ar.ok){
+        const buf = await ar.arrayBuffer();
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuf = await audioCtx.decodeAudioData(buf);
+        audioDest = audioCtx.createMediaStreamDestination();
+        audioSrc = audioCtx.createBufferSource();
+        audioSrc.buffer = audioBuf; audioSrc.loop = true;
+        const gain = audioCtx.createGain(); gain.gain.value = 0.9;
+        audioSrc.connect(gain); gain.connect(audioDest);
+      }
+    } catch (e){ audioDest = null; }
+
+    // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
+    const W = 1280, H = 720, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800;
+    const FRAME_MS = Math.max(200, Math.min(1100, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    const stream = c.captureStream(30);
+    if (audioDest) audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    // Prefer MP4 (plays everywhere: WhatsApp, iPhone, QuickTime); WebM as fallback.
+    const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4',
+                  'video/webm;codecs=vp9,opus', 'video/webm']
+                 .find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 5_000_000});
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    const done = new Promise(res => { rec.onstop = res; });
+
+    const tag = fixTag(fix);
+    const card = (lines) => {
+      ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
+      let y = H / 2 - (lines.length - 1) * 34;
+      for (const [text, color, font] of lines){
+        ctx.fillStyle = color; ctx.font = font; ctx.textAlign = 'center';
+        ctx.fillText(text, W / 2, y);
+        y += 68;
+      }
+      ctx.textAlign = 'left';
+    };
+    const logoCard = () => {
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      if (logo){
+        const lw = W * 0.55, lh = lw * logo.height / logo.width;
+        ctx.drawImage(logo, (W - lw) / 2, (H - lh) / 2, lw, lh);
+      } else {
+        card([['PowerFix', '#E8442A', '700 64px -apple-system, Helvetica']]);
+      }
+    };
+    const fmtDate = (ds) => new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
+    const photoFrame = (i) => {
+      const im = imgs[i], f = frames[i];
+      ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
+      const s = Math.min(W / im.width, H / im.height);
+      const w = im.width * s, h = im.height * s;
+      ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+      const g = ctx.createLinearGradient(0, H - 210, 0, H);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
+      ctx.fillStyle = g; ctx.fillRect(0, H - 210, W, 210);
+      ctx.fillStyle = '#fff'; ctx.font = '800 62px -apple-system, Helvetica';
+      ctx.fillText(`Day ${f.day}`, 44, H - 76);
+      ctx.fillStyle = '#7ddfa6'; ctx.font = '600 26px -apple-system, Helvetica';
+      ctx.fillText(fmtDate(f.date), 46, H - 34);
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '400 20px -apple-system, Helvetica';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${tag} · ${fix.label || 'Pothole'}`, W - 40, H - 36);
+      ctx.textAlign = 'left';
+      // brand watermark top-right, like the install promo video
+      if (logo){
+        const lw = 190, lh = lw * logo.height / logo.width;
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(logo, W - lw - 28, 22, lw, lh);
+        ctx.globalAlpha = 1;
+      }
+    };
+
+    // Segment timeline: logo → location card → each photo → logo.
+    const segments = [{draw: logoCard, ms: LOGO_MS}];
+    segments.push({draw: () => card([
+      [(fix.country || 'Panama').toUpperCase(), '#46C97E', '700 26px -apple-system, Helvetica'],
+      [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
+      [`${tag} · ${isFixed(fix) ? 'Fixed ' + fix.fix_date : 'Reported ' + fix.report_date}`, '#999', '400 24px -apple-system, Helvetica'],
+    ]), ms: LOC_MS});
+    for (let i = 0; i < imgs.length; i++) segments.push({draw: () => photoFrame(i), ms: FRAME_MS});
+    segments.push({draw: logoCard, ms: LOGO_MS});
+
+    btn.textContent = 'Rendering…';
+    rec.start();
+    if (audioSrc) audioSrc.start();
+
+    // Timer-driven timeline with crossfades between segments. Timers, not rAF:
+    // browsers throttle rAF in hidden/embedded views, which froze or blacked
+    // out the recording. Every paint op feeds a real frame to captureStream.
+    const FADE_MS = 400;
+    const totalMs = segments.reduce((s, x) => s + x.ms, 0);
+    await new Promise(resolve => {
+      let i = 0, segStart = performance.now();
+      const t0 = performance.now();
+      const iv = setInterval(() => {
+        const now = performance.now();
+        if (now - segStart >= segments[i].ms){
+          i++; segStart = now;
+          if (i >= segments.length){ clearInterval(iv); return resolve(); }
+        }
+        const el = now - segStart;
+        if (i > 0 && el < FADE_MS){
+          segments[i - 1].draw();
+          ctx.globalAlpha = el / FADE_MS;
+          segments[i].draw();
+          ctx.globalAlpha = 1;
+        } else {
+          segments[i].draw();
+        }
+        btn.textContent = `Rendering… ${Math.min(99, Math.round((now - t0) / totalMs * 100))}%`;
+      }, 33);
+    });
+
+    rec.stop();
+    await done;
+    if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
+    if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
+
+    const blob = new Blob(chunks, {type: mime.split(';')[0]});
+    const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
+    const fname = `LogPothole_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    btn.textContent = 'Downloaded ✓';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch (e) {
+    alert('Video export failed: ' + (e.message || e));
+    btn.textContent = orig; btn.disabled = false;
+  }
+}
+
+// ---------- fixed map / list ----------
+function initListMap(){
+  listMap = L.map('listMap', {zoomControl:true}).setView([9.0, -79.5], 5);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  }).addTo(listMap);
+}
+
+function esc(s){
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function toggleFix(fixId){
+  openFixId = (openFixId === fixId) ? null : fixId;
+  renderMapAndList();
+}
+
+function carScroll(fixId, dir){
+  const track = document.getElementById(`car-${fixId}`);
+  if (track) track.scrollBy({left: dir * track.clientWidth * 0.8, behavior: 'smooth'});
+}
+
+function renderMapAndList(){
+  listMarkers.forEach(m => listMap.removeLayer(m));
+  listMarkers = [];
+
+  populateFilters();
+  const shown = filteredFixes();
+  // Ruta crítica: open potholes first (oldest report on top), then fixed ones
+  // (longest-holding on top). A routing feature over this order comes later.
+  const sorted = [...shown].sort((a,b) =>
+    (isFixed(a) - isFixed(b)) || (ageDays(b) - ageDays(a)));
+
+  const open = shown.filter(f => !isFixed(f));
+  document.getElementById('sumOpen').textContent = open.length;
+  document.getElementById('sumFixed').textContent = shown.length - open.length;
+  document.getElementById('sumOldest').textContent = open.length ? Math.max(...open.map(ageDays)) : '—';
+
+  const listEl = document.getElementById('fixList');
+  if (!sorted.length){
+    listEl.innerHTML = '<div class="empty-state">No potholes here yet. Switch to "Report a Pothole" to add the first one.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  const bounds = [];
+
+  sorted.forEach(f => {
+    const fixed = isFixed(f);
+    const d = ageDays(f);
+    const marker = L.marker([f.lat, f.lng], {icon: L.divIcon({
+      className: '',
+      html: `<div class="num-pin${fixed ? ' fixed' : ''}">${fixNum(f)}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13],
+    })}).addTo(listMap);
+    marker.bindPopup(`<b>${fixTag(f)} · ${esc(f.label || 'Pothole')}</b><br>${
+      fixed ? `Fixed ${f.fix_date} · holding ${d} days` : `Open ${d} days · reported ${f.report_date}`}`);
+    listMarkers.push(marker);
+    bounds.push([f.lat, f.lng]);
+
+    const groups = photoGroups(f);
+    const nPhotos = (f.photos || []).length;
+    const isOpen = openFixId === f.id;
+
+    const row = document.createElement('div');
+    row.className = 'fix-row' + (isOpen ? ' open' : '');
+
+    const flat = [];
+    groups.forEach(g => g.photos.forEach(p => flat.push({p, day: g.day})));
+    const timeline = flat.length
+      ? `<div class="carousel">
+          <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',-1)">‹</button>
+          <div class="car-track" id="car-${f.id}">
+            ${flat.map((it, idx) => `
+              <div class="car-item">
+                <div class="car-day">Day ${it.day}</div>
+                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
+                <img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
+                <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
+              </div>`).join('')}
+          </div>
+          <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',1)">›</button>
+        </div>`
+      : `<div class="no-photos">No photos yet${isViewer() ? '.' : ' — add the first ones below.'}</div>`;
+
+    const place = [f.city, f.country].filter(Boolean).join(', ');
+
+    const statusActions = !isMaster() ? '' : (fixed
+      ? `<button class="btn small secondary" onclick="event.stopPropagation();reopenFix('${f.id}')">↩ Reopen</button>`
+      : `<input type="date" id="fixedDate-${f.id}" value="${new Date().toISOString().slice(0,10)}" onclick="event.stopPropagation()"/>
+         <button class="btn small" onclick="event.stopPropagation();markFixed('${f.id}')">✓ Mark fixed</button>`);
+
+    const uploadControls = isViewer()
+      ? ''
+      : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
+          <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || !isMaster()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${!isMaster() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
+
+    const detailInner = (isMaster() && editFixId === f.id)
+      ? `
+        <div class="edit-form" onclick="event.stopPropagation()">
+          <div class="field-row">
+            <div class="field"><label>Label</label><input id="eLabel-${f.id}" type="text" value="${esc(f.label || '')}"/></div>
+            <div class="field"><label>Report date</label><input id="eReport-${f.id}" type="date" value="${f.report_date}"/></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Country</label><input id="eCountry-${f.id}" type="text" value="${esc(f.country || '')}"/></div>
+            <div class="field"><label>City</label><input id="eCity-${f.id}" type="text" value="${esc(f.city || '')}"/></div>
+          </div>
+          ${fixed ? `<div class="field"><label>Fix date</label><input id="eFix-${f.id}" type="date" value="${f.fix_date}"/></div>` : ''}
+          <div class="field"><label>Notes</label><textarea id="eNotes-${f.id}">${esc(f.notes || '')}</textarea></div>
+          <div class="tl-actions">
+            <button class="btn small" onclick="event.stopPropagation();saveFixEdits('${f.id}')">💾 Save changes</button>
+            <button class="btn small secondary" onclick="event.stopPropagation();cancelFixEdit()">Cancel</button>
+            <button class="btn small danger" onclick="event.stopPropagation();deleteFix('${f.id}')">🗑 Delete pothole</button>
+          </div>
+          <div class="field-hint">Tip: photo dates are edited under each photo in the timeline — the stamp on the photo updates to match when you save them.</div>
+          <div class="row-msg" id="upMsg-${f.id}"></div>
+        </div>`
+      : `
+        ${timeline}
+        <div class="tl-actions">
+          ${statusActions}
+          ${uploadControls}
+          ${isMaster() ? `<button class="btn small secondary" onclick="event.stopPropagation();startFixEdit('${f.id}')">✎ Edit</button>` : ''}
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();playShow('${f.id}')">▶ Timelapse</button>` : ''}
+          ${nPhotos ? `<button class="btn small secondary" onclick="event.stopPropagation();exportVideo('${f.id}', this)">⬇ Export video</button>` : ''}
+          <button class="btn small secondary" onclick="event.stopPropagation();shareLoc('${f.id}','gmaps')">🗺 Google Maps</button>
+          <button class="btn small secondary" onclick="event.stopPropagation();shareLoc('${f.id}','waze')">🚘 Waze</button>
+          ${navigator.share ? `<button class="btn small secondary" onclick="event.stopPropagation();shareLocSheet('${f.id}')">📤 Share</button>` : ''}
+          <button class="btn small secondary" onclick="event.stopPropagation();listMap.setView([${f.lat},${f.lng}],16);window.scrollTo({top:0,behavior:'smooth'})">Show on map</button>
+        </div>
+        <div id="upList-${f.id}"></div>
+        <div class="row-msg" id="upMsg-${f.id}"></div>`;
+
+    row.innerHTML = `
+      <div class="fix-head" onclick="toggleFix('${f.id}')">
+        <div class="fix-badge"><div class="d${fixed ? '' : ' open'}">#${fixNum(f)}</div><div class="l">${fixed ? 'fixed' : 'open'}</div></div>
+        <div class="fix-info">
+          <div class="fix-label">${esc(f.label || 'Pothole')}</div>
+          <div class="fix-meta">${place ? esc(place) + ' · ' : ''}${fixed ? `fixed ${f.fix_date}` : `reported ${f.report_date}`}</div>
+          ${f.notes ? `<div class="fix-notes">${esc(f.notes)}</div>` : ''}
+        </div>
+        <div class="fix-side">
+          <div class="day-chip${fixed ? '' : ' open'}">${fixed ? `Day ${d}` : `Open ${d}d`}</div>
+          <div class="fix-photocount">${nPhotos ? nPhotos + ' 📷' : ''}</div>
+        </div>
+        <div class="fix-chev">▶</div>
+      </div>
+      <div class="fix-detail">${detailInner}</div>
+    `;
+    listEl.appendChild(row);
+  });
+  hydrateEncImages(listEl);
+  if (bounds.length > 1) listMap.fitBounds(bounds, {padding:[30,30]});
+  else if (bounds.length === 1) listMap.setView(bounds[0], 14);
+}
+
+// ---------- boot ----------
+// Load via the GitHub API when a token is set (always fresh — the raw CDN can
+// serve a minutes-old copy, which made saved date edits look like they reverted).
+async function loadFixes(){
+  if (!hasDataKey()){
+    fixes = []; renderMapAndList(); openLogin();
+    return;
+  }
+  let bytes = null;
+  if (getGhToken()){
+    try {
+      const r = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
+      if (r.ok) bytes = bytesFromB64((await r.json()).content.replace(/\n/g,''));
+      else if (r.status === 401) markTokenExpired(); // map still loads from the raw copy below
+    } catch (e) { /* fall through to raw */ }
+  }
+  if (!bytes){
+    try {
+      const res = await fetch(`${RAW_BASE}${DATA_PATH}?t=${Date.now()}`);
+      if (res.ok) bytes = new Uint8Array(await res.arrayBuffer());
+    } catch (e){}
+  }
+  let loaded = [];
+  if (bytes){
+    try { loaded = await decryptJSONBytes(bytes); }
+    catch (e){
+      // The stored key no longer opens the data (rotated?) — sign this device out.
+      localStorage.removeItem('fw_dk'); _dataKey = null;
+      fixes = []; renderMapAndList(); openLogin();
+      return;
+    }
+  }
+  fixes = loaded;
+  purgeTrialData();
+  // Territory accounts never even hold other countries' records in memory.
+  const mine = myCountry();
+  if (mine) fixes = fixes.filter(f => fold(normCountry(f.country)) === fold(mine));
+  // Pre-pivot records have no status: anything with a fix_date was logged as
+  // an already-completed repair, so it comes in green.
+  fixes.forEach(f => {
+    if (!f.photos) f.photos = [];
+    if (!f.status) f.status = f.fix_date ? 'fixed' : 'reported';
+    if (!f.report_date) f.report_date = f.fix_date || (f.logged_at || '').slice(0, 10);
+    f.country = normCountry(f.country);
+  });
+  renderMapAndList();
+}
+
+document.getElementById('fDate').valueAsDate = new Date();
+updateGearDot();
+initPickMap();
+initListMap();
+loadFixes();
+</script>
+<style>
+#hubBtn{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));right:18px;z-index:9999;width:42px;height:42px;border-radius:50%;background:#E8442A;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.45);opacity:.9;transition:transform .15s,opacity .15s;}
+#hubBtn:hover{transform:scale(1.08);opacity:1;}
+#hubBtn svg{width:19px;height:19px;}
+</style>
+<a id="hubBtn" href="https://developers.powerfixinc.com/" title="PowerFix Hub">
+  <svg viewBox="0 0 24 24" fill="#fff"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+</a>
+
+<script>
+// Animated tab icon — the hub's LogPothole radar, sweeping. Browsers ignore
+// animation inside an SVG favicon, so each frame is drawn to a canvas and
+// pushed into the <link>. The static SVG in <head> is the fallback (also what
+// shows when the visitor asks for reduced motion).
+(function radarFavicon(){
+  const link = document.querySelector('link[rel="icon"]');
+  if (!link || !window.matchMedia) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const S = 64, k = S / 32;               // design grid is 32×32, drawn at 2×
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  const TAU = Math.PI * 2;
+  // Bigger than the hub tile's blips: at a 16px tab the originals disappeared.
+  const blips = [{x:22.5,y:9.5,r:2.6,d:0}, {x:8.8,y:20.5,r:2.2,d:.8}, {x:20.5,y:23.5,r:2,d:1.6}];
+  const t0 = performance.now();
+  function frame(){
+    const t = (performance.now() - t0) / 1000;
+    ctx.clearRect(0, 0, S, S);
+    ctx.save();
+    ctx.scale(k, k);
+    ctx.beginPath(); ctx.arc(16, 16, 15, 0, TAU);
+    ctx.fillStyle = '#0b0e14'; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = '#46c97e'; ctx.stroke();
+    ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(70,201,126,.35)';
+    ctx.beginPath(); ctx.arc(16, 16, 12.5, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(70,201,126,.15)';
+    ctx.beginPath();
+    ctx.moveTo(2, 16); ctx.lineTo(30, 16);
+    ctx.moveTo(16, 2); ctx.lineTo(16, 30);
+    ctx.stroke();
+    const a = (t / 6) * TAU - Math.PI / 2;  // 6s per rotation, like the hub tile
+    ctx.beginPath(); ctx.moveTo(16, 16);
+    ctx.arc(16, 16, 12.5, a, a + TAU / 3);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(70,201,126,.42)'; ctx.fill();
+    blips.forEach(b => {
+      const p = (((t - b.d) / 2) % 1 + 1) % 1;   // 2s blink, staggered
+      const o = p < .45 ? .1 + (p / .45) * .9 : p < .6 ? 1 : Math.max(.1, 1 - ((p - .6) / .4) * .9);
+      ctx.globalAlpha = o;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU);
+      ctx.fillStyle = '#FF5050'; ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    ctx.strokeStyle = '#46c97e'; ctx.lineWidth = 1.9;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(12.6, 16.3); ctx.lineTo(14.9, 18.6); ctx.lineTo(19.7, 13.5);
+    ctx.stroke();
+    ctx.restore();
+    try { link.href = cv.toDataURL('image/png'); } catch (e){}
+  }
+  frame();
+  setInterval(frame, 120);  // ~8fps: smooth enough at 16px, negligible cost
+})();
+</script>
+</body>
+</html>
