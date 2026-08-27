@@ -380,6 +380,18 @@ function b64FromBytes(buf){
   return btoa(out);
 }
 let _dataKey = null; // imported CryptoKey cache
+// A write must never go out on top of data we failed to read. `dataLoadOK`
+// is true only after loadFixes actually read AND decrypted the remote list
+// (or confirmed it genuinely does not exist yet); `loadWasStale` marks a list
+// that came from the raw CDN, which can be minutes behind.
+let dataLoadOK = false, loadWasStale = false;
+// Ids deliberately removed by deleteFix — the only entries allowed to vanish
+// from the remote list during a merge.
+const pendingDeletes = new Set();
+// Stamped on every local change so the merge can tell which copy of a record
+// is newer. Records saved before this existed have no stamp; those keep the
+// old rule (the writer's copy wins).
+function touch(fix){ if (fix) fix.updated_at = new Date().toISOString(); }
 async function dataKey(){
   if (_dataKey) return _dataKey;
   const b = localStorage.getItem('fw_dk');
@@ -430,9 +442,18 @@ const _photoURLs = new Map();
 function photoURL(p){
   if (!_photoURLs.has(p.path)){
     _photoURLs.set(p.path, (async () => {
-      const res = await fetch(RAW_BASE + p.path + '.enc');
-      if (!res.ok) throw new Error('photo fetch failed');
-      const pt = await aesDecrypt(new Uint8Array(await res.arrayBuffer()));
+      let bytes = null;
+      const res = await fetch(RAW_BASE + p.path + '.enc').catch(() => null);
+      if (res && res.ok) bytes = new Uint8Array(await res.arrayBuffer());
+      // A photo uploaded moments ago is committed but not yet on the raw CDN,
+      // so it 404s there and the image came up blank. Ask the API, which is
+      // always current, before giving up.
+      if (!bytes && getGhToken()){
+        const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`).catch(() => null);
+        if (r && r.ok) bytes = bytesFromB64((await r.json()).content.replace(/\n/g,''));
+      }
+      if (!bytes) throw new Error('photo fetch failed');
+      const pt = await aesDecrypt(bytes);
       return URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
     })().catch(err => { _photoURLs.delete(p.path); throw err; }));
   }
@@ -596,6 +617,32 @@ function markTokenExpired(){
   b.innerHTML = 'Your access code has <b>expired or was revoked</b> — <b onclick="promptAccessCode()">click here</b> to paste the new code (ask Ariel for it).';
 }
 const TOKEN_EXPIRED_MSG = 'Access code expired or invalid — tap the gear icon (top right) and paste the new code.';
+
+// The list on screen is empty because the read failed, not because there is
+// nothing there. Saying so beats a silently blank homepage.
+function showLoadFailure(){
+  const b = document.getElementById('setupBanner');
+  if (!b) return;
+  b.dataset.loadbanner = '1';
+  b.style.display = 'block';
+  b.innerHTML = 'Could not load the pothole list (no connection, or GitHub is unreachable). '
+    + 'This list is <b>not</b> empty — saving is disabled until it loads. '
+    + '<b onclick="location.reload()">Reload</b>';
+}
+// Drops a banner this loader raised, leaving the access-code one alone.
+function clearLoadBanner(){
+  const b = document.getElementById('setupBanner');
+  if (b && b.dataset.loadbanner){ b.style.display = 'none'; b.innerHTML = ''; delete b.dataset.loadbanner; }
+}
+// Served from the raw CDN, which lags a few minutes behind a just-made change.
+function showStaleWarning(){
+  const b = document.getElementById('setupBanner');
+  if (!b || b.style.display === 'block') return;
+  b.dataset.loadbanner = '1';
+  b.style.display = 'block';
+  b.innerHTML = 'Showing a cached copy — a change made in the last few minutes may not appear yet. '
+    + '<b onclick="location.reload()">Reload</b>';
+}
 
 async function ghFetch(url, opts={}){
   const token = getGhToken();
@@ -1051,30 +1098,57 @@ async function stageFiles(fixId){
 
 // ---------- fixes.json read-modify-write ----------
 async function commitFixes(message){
+  // Refuse to write when this session never managed to read the list. Without
+  // this, a failed load left `fixes` as [] and the next save published that
+  // empty list over everything.
+  if (!dataLoadOK) throw new Error('Data was not loaded — reload the page before saving (nothing was changed).');
+
   const getRes = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
   let sha = null, remote = null;
   if (getRes.ok){
     const d = await getRes.json();
     sha = d.sha;
-    try { remote = await decryptJSONBytes(bytesFromB64(d.content.replace(/\n/g,''))); } catch (e){}
+    // A file we cannot decrypt is still real data: abort rather than clobber it.
+    try { remote = await decryptJSONBytes(bytesFromB64(d.content.replace(/\n/g,''))); }
+    catch (e){ throw new Error('Could not read the saved data to merge into — nothing was changed.'); }
+    if (!Array.isArray(remote)) throw new Error('Saved data is not a list — nothing was changed.');
   }
   else if (getRes.status === 401){ markTokenExpired(); throw new Error(TOKEN_EXPIRED_MSG); }
   else if (getRes.status !== 404){ throw new Error(`read failed (${getRes.status})`); }
 
   let out = fixes;
-  // A territory account only holds its own country in memory, so writing that
-  // list straight out would erase every other country. Merge instead: their
-  // records overwrite, everyone else's pass through untouched.
-  if (myCountry() && Array.isArray(remote)){
+  // Always merge onto the copy we just read, for every role. A territory
+  // account only holds its own country in memory; a master's copy can be
+  // minutes old, or predate an edit made on the phone or another browser.
+  // Either way, writing the in-memory list straight out erases the rest.
+  // Records we hold win; everything else passes through untouched, and only
+  // ids that went through deleteFix are allowed to disappear.
+  if (Array.isArray(remote)){
     const mineById = new Map(out.map(f => [f.id, f]));
-    const merged = remote.map(f => mineById.has(f.id) ? mineById.get(f.id) : f);
+    const merged = remote
+      .filter(f => !pendingDeletes.has(f.id))
+      .map(f => {
+        const mine = mineById.get(f.id);
+        if (!mine) return f;
+        // Both sides have this record. Keep whichever was changed last, so a
+        // repair marked on the phone is not undone by a browser tab that has
+        // been open since before it. Unstamped records fall back to mine.
+        if (f.updated_at && (!mine.updated_at || f.updated_at > mine.updated_at)) return f;
+        return mine;
+      });
     const remoteIds = new Set(remote.map(f => f.id));
     out.forEach(f => { if (!remoteIds.has(f.id)) merged.push(f); });
     out = merged;
+    // Last line of defence: the merge should only ever shrink by deletions.
+    const allowed = remote.filter(f => pendingDeletes.has(f.id)).length;
+    if (out.length < remote.length - allowed){
+      throw new Error('Save aborted — the result would have dropped records. Nothing was changed.');
+    }
   }
   // _-prefixed keys are transient UI state (e.g. _oldDate) — never persisted
   const b64 = await encryptJSONToB64(out, (k, v) => k.startsWith('_') ? undefined : v);
   await ghPutFile(DATA_PATH, b64, message, sha);
+  pendingDeletes.clear();
 }
 
 // ---------- share location ----------
@@ -1115,6 +1189,7 @@ async function saveFixEdits(fixId){
   fix.notes = val('eNotes');
   fix.report_date = report;
   if (isFixed(fix) && val('eFix')) fix.fix_date = val('eFix');
+  touch(fix);
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
   try {
     await commitFixes(`edit info: ${fix.id}`);
@@ -1139,6 +1214,7 @@ async function deletePhoto(fixId, flatIdx){
   try {
     if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
     fix.photos = fix.photos.filter(x => x !== p);
+    touch(fix);
     await commitFixes(`remove photo: ${fix.id}`);
     renderMapAndList();
     const m2 = document.getElementById(`upMsg-${fixId}`);
@@ -1160,8 +1236,15 @@ async function deleteFix(fixId){
     for (const p of (fix.photos || [])){
       if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
     }
+    const before = fixes;
     fixes = fixes.filter(f => f.id !== fixId);
-    await commitFixes(`deleted: ${fix.id}`);
+    pendingDeletes.add(fixId);   // the merge in commitFixes only drops these
+    try { await commitFixes(`deleted: ${fix.id}`); }
+    catch (e){
+      // Put it back rather than leaving a delete intent hanging over the next save.
+      fixes = before; pendingDeletes.delete(fixId); renderMapAndList();
+      throw e;
+    }
     if (openFixId === fixId) openFixId = null;
     editFixId = null;
     renderMapAndList();
@@ -1400,16 +1483,23 @@ async function logFix(){
       const data = await getRes.json();
       sha = data.sha;
       current = await decryptJSONBytes(bytesFromB64(data.content.replace(/\n/g,'')));
+    } else if (getRes.status === 401){
+      markTokenExpired();
+      throw new Error(TOKEN_EXPIRED_MSG);
     } else if (getRes.status !== 404){
       throw new Error(`read failed (${getRes.status})`);
     }
     entry.num = current.reduce((m, f) => Math.max(m, f.num || 0), 0) + 1;
+    touch(entry);
     current.push(entry);
-    const b64 = await encryptJSONToB64(current);
+    const b64 = await encryptJSONToB64(current, (k, v) => k.startsWith('_') ? undefined : v);
     await ghPutFile(DATA_PATH, b64, `report: ${entry.id}`, sha);
 
     const mine = myCountry();
     fixes = mine ? current.filter(f => fold(normCountry(f.country)) === fold(mine)) : current;
+    // This path just read the real list straight from the API, so whatever
+    // went wrong at boot no longer applies — saving is safe again.
+    dataLoadOK = true; loadWasStale = false;
     renderMapAndList();
     msg.className = 'ok'; msg.textContent = `Pothole reported with ${entry.photos.length} photo(s) — it's now a red dot on the map.`;
 
@@ -1457,6 +1547,7 @@ async function addUpdate(fixId){
       fix.status = 'fixed';
       fix.fix_date = added.map(p => p.date).sort()[added.length - 1];
     }
+    touch(fix);
     msgEl.textContent = 'Saving…';
     await commitFixes(wasOpen
       ? `fixed: ${fix.id}`
@@ -1489,6 +1580,7 @@ async function markFixed(fixId){
   const date = (dateEl && dateEl.value) || new Date().toISOString().slice(0, 10);
   fix.status = 'fixed';
   fix.fix_date = date;
+  touch(fix);
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
   try {
     await commitFixes(`fixed: ${fix.id}`);
@@ -1507,6 +1599,7 @@ async function reopenFix(fixId){
   const prevDate = fix.fix_date;
   fix.status = 'reported';
   fix.fix_date = null;
+  touch(fix);
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving…';
   try {
     await commitFixes(`reopened: ${fix.id}`);
@@ -1551,6 +1644,7 @@ async function saveDates(fixId){
       await restampPhoto(fix, changed[i], changed[i]._oldDate);
     }
     (fix.photos || []).forEach(p => delete p._oldDate);
+    touch(fix);
     msgEl.textContent = 'Saving date changes…';
     await commitFixes(`re-date photos: ${fix.id}`);
     renderMapAndList();
@@ -1970,23 +2064,33 @@ function renderMapAndList(){
 // Load via the GitHub API when a token is set (always fresh — the raw CDN can
 // serve a minutes-old copy, which made saved date edits look like they reverted).
 async function loadFixes(){
+  dataLoadOK = false; loadWasStale = false;
   if (!hasDataKey()){
     fixes = []; renderMapAndList(); openLogin();
     return;
   }
-  let bytes = null;
+  let bytes = null, missing = false;
   if (getGhToken()){
     try {
       const r = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`);
       if (r.ok) bytes = bytesFromB64((await r.json()).content.replace(/\n/g,''));
-      else if (r.status === 401) markTokenExpired(); // map still loads from the raw copy below
+      else if (r.status === 404) missing = true;       // genuinely no data yet
+      else if (r.status === 401) markTokenExpired();   // map still loads from the raw copy below
     } catch (e) { /* fall through to raw */ }
   }
-  if (!bytes){
+  if (!bytes && !missing){
     try {
       const res = await fetch(`${RAW_BASE}${DATA_PATH}?t=${Date.now()}`);
-      if (res.ok) bytes = new Uint8Array(await res.arrayBuffer());
+      if (res.ok){ bytes = new Uint8Array(await res.arrayBuffer()); loadWasStale = true; }
+      else if (res.status === 404) missing = true;
     } catch (e){}
+  }
+  // Neither source answered — this is a failed read, not an empty database.
+  // Show it, and leave dataLoadOK false so no save can overwrite the real list.
+  if (!bytes && !missing){
+    fixes = []; renderMapAndList();
+    showLoadFailure();
+    return;
   }
   let loaded = [];
   if (bytes){
@@ -1998,6 +2102,9 @@ async function loadFixes(){
       return;
     }
   }
+  dataLoadOK = true;
+  if (loadWasStale) showStaleWarning();
+  else clearLoadBanner();
   fixes = loaded;
   purgeTrialData();
   // Territory accounts never even hold other countries' records in memory.
