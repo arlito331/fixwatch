@@ -1889,14 +1889,37 @@ async function exportVideo(fixId, btn){
     const blob = new Blob(chunks, {type: mime.split(';')[0]});
     const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
     const fname = `LogPothole_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
-    const file = new File([blob], fname, {type: blob.type});
+    const resetBtn = (label) => {
+      btn.textContent = label;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+    };
 
-    // Hand the finished video to the user. Inside the iOS app a plain
-    // <a download> writes to the app's private storage where it can't be
-    // found, so prefer the native share sheet ("Save Video" to Photos /
-    // "Save to Files"). The Web Share API needs a fresh user gesture, and the
-    // real-time render above burns the original tap's activation, so present
-    // a "Save video" button the user taps themselves to open the sheet.
+    // Inside the Capacitor iOS app both a plain <a download> and the browser's
+    // Web Share silently fail (the app runs on a custom scheme), so the video
+    // just vanished. Use the native Filesystem + Share plugins: write the clip,
+    // then open the real iOS sheet ("Save Video" to Photos / "Save to Files").
+    const Cap = window.Capacitor;
+    if (Cap && Cap.isNativePlatform && Cap.isNativePlatform() && Cap.registerPlugin){
+      try {
+        const Filesystem = Cap.registerPlugin('Filesystem');
+        const Share = Cap.registerPlugin('Share');
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).split(',')[1] || '');
+          r.onerror = () => rej(new Error('could not encode the video'));
+          r.readAsDataURL(blob);
+        });
+        const written = await Filesystem.writeFile({path: fname, data: b64, directory: 'CACHE'});
+        await Share.share({title: fname, files: [written.uri]});
+        resetBtn('Saved ✓');
+        return;
+      } catch (err) {
+        // Fall through to the web methods if a plugin is missing at runtime.
+      }
+    }
+
+    // Browser: prefer Web Share (a fresh tap opens the OS sheet), else download.
+    const file = new File([blob], fname, {type: blob.type});
     if (navigator.canShare && navigator.canShare({files: [file]})){
       btn.textContent = '📤 Save video';
       btn.disabled = false;
@@ -1906,7 +1929,6 @@ async function exportVideo(fixId, btn){
           await navigator.share({files: [file], title: fname});
         } catch (err) {
           if (err && err.name === 'AbortError') return; // user closed the sheet
-          // Last-resort fallback if the share sheet refuses for another reason.
           const u = URL.createObjectURL(file);
           const dl = document.createElement('a');
           dl.href = u; dl.download = fname; dl.click();
@@ -1914,14 +1936,11 @@ async function exportVideo(fixId, btn){
         }
       };
     } else {
-      // Desktop browsers (no file sharing): a normal download works fine and
-      // goes to the Downloads folder.
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = fname; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-      btn.textContent = 'Downloaded ✓';
-      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+      resetBtn('Downloaded ✓');
     }
   } catch (e) {
     alert('Video export failed: ' + (e.message || e));
