@@ -1778,7 +1778,7 @@ async function exportVideo(fixId, btn){
     } catch (e){ audioDest = null; }
 
     // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
-    const W = 1280, H = 720, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800;
+    const W = 1080, H = 1920, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800; // 9:16 vertical for iPhone
     const FRAME_MS = Math.max(200, Math.min(1100, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
@@ -1930,14 +1930,10 @@ async function exportVideo(fixId, btn){
         resetBtn('Saved ✓');
         return;
       } catch (err) {
-        // Surface the real reason instead of silently vanishing, so we can fix it.
-        alert('Save failed — ' + (err && (err.message || err.errorMessage) ? (err.message || err.errorMessage) : JSON.stringify(err)));
+        alert('Couldn’t save the video — please try again.');
         btn.textContent = orig; btn.disabled = false;
         return;
       }
-    }
-    if (Cap && !isNative){
-      alert('Note: app not detected as native (platform=' + (Cap.getPlatform && Cap.getPlatform()) + ') — using browser save.');
     }
 
     // Browser: prefer Web Share (a fresh tap opens the OS sheet), else download.
