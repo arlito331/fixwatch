@@ -1899,23 +1899,40 @@ async function exportVideo(fixId, btn){
     // just vanished. Use the native Filesystem + Share plugins: write the clip,
     // then open the real iOS sheet ("Save Video" to Photos / "Save to Files").
     const Cap = window.Capacitor;
-    if (Cap && Cap.isNativePlatform && Cap.isNativePlatform() && Cap.registerPlugin){
+    const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+    if (isNative){
       try {
         const Filesystem = Cap.registerPlugin('Filesystem');
         const Share = Cap.registerPlugin('Share');
+        if (!Filesystem || !Share) throw new Error('plugin proxy missing (platform=' + (Cap.getPlatform && Cap.getPlatform()) + ')');
         const b64 = await new Promise((res, rej) => {
           const r = new FileReader();
           r.onload = () => res(String(r.result).split(',')[1] || '');
           r.onerror = () => rej(new Error('could not encode the video'));
           r.readAsDataURL(blob);
         });
-        const written = await Filesystem.writeFile({path: fname, data: b64, directory: 'CACHE'});
-        await Share.share({title: fname, files: [written.uri]});
+        let written;
+        try {
+          written = await Filesystem.writeFile({path: fname, data: b64, directory: 'CACHE'});
+        } catch (e){ throw new Error('writeFile: ' + (e && (e.message || e.errorMessage) || JSON.stringify(e))); }
+        try {
+          await Share.share({title: fname, url: written.uri, files: [written.uri]});
+        } catch (e){
+          const m = (e && (e.message || e.errorMessage) || '') + '';
+          if (/cancel/i.test(m)) { resetBtn('Ready'); return; }  // user dismissed the sheet
+          throw new Error('share: ' + (m || JSON.stringify(e)));
+        }
         resetBtn('Saved ✓');
         return;
       } catch (err) {
-        // Fall through to the web methods if a plugin is missing at runtime.
+        // Surface the real reason instead of silently vanishing, so we can fix it.
+        alert('Save failed — ' + (err && (err.message || err.errorMessage) ? (err.message || err.errorMessage) : JSON.stringify(err)));
+        btn.textContent = orig; btn.disabled = false;
+        return;
       }
+    }
+    if (Cap && !isNative){
+      alert('Note: app not detected as native (platform=' + (Cap.getPlatform && Cap.getPlatform()) + ') — using browser save.');
     }
 
     // Browser: prefer Web Share (a fresh tap opens the OS sheet), else download.
