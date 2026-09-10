@@ -1142,13 +1142,61 @@ async function stageItem(file, forcedDate){
   return {file: f, date: forcedDate || date, time, kind: 'photo'};
 }
 
+// ---------- native video picker (iOS/Android) ----------
+// The web <input type=file> reliably returns photos but not videos inside the
+// Capacitor WebView (iOS fails to hand the clip over). On the native app we
+// pick videos through the FilePicker plugin instead and feed the real file
+// into the same upload pipeline.
+function isNativeApp(){ const C = window.Capacitor; return !!(C && C.isNativePlatform && C.isNativePlatform()); }
+async function pickNativeVideos(limit){
+  const C = window.Capacitor;
+  const FilePicker = (C.Plugins && C.Plugins.FilePicker) || (C.registerPlugin && C.registerPlugin('FilePicker'));
+  if (!FilePicker) throw new Error('native picker unavailable');
+  const res = await FilePicker.pickVideos({ readData: true, limit: limit || 1 });
+  return (res.files || []).map(f => {
+    if (!f.data) throw new Error('could not read the picked video');
+    const name = f.name || `video_${Date.now()}.mp4`;
+    return new File([bytesFromB64(f.data)], name, { type: f.mimeType || 'video/mp4', lastModified: f.modifiedAt || Date.now() });
+  });
+}
+async function addNativeVideo(fixId){
+  if (isViewer()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  let files;
+  try { files = await pickNativeVideos(3); }
+  catch (e){
+    const m = (e && e.message || '') + '';
+    if (/cancel/i.test(m)) return;   // user closed the picker
+    msgEl.className='row-msg err'; msgEl.textContent = m || 'Could not open the video picker.'; return;
+  }
+  if (!files.length) return;
+  const ok = files.filter(f => f.size <= MAX_VIDEO_BYTES);
+  const over = files.length - ok.length;
+  if (over){ msgEl.className='row-msg err'; msgEl.textContent = `${over} video(s) over ${MAX_VIDEO_MB} MB — skipped.`; }
+  if (!ok.length) return;
+  try {
+    msgEl.className='row-msg';
+    const items = [];
+    for (const f of ok){ msgEl.textContent = 'Preparing video…'; items.push(await stageItem(f)); }
+    const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
+    fix.photos = (fix.photos || []).concat(added);
+    touch(fix);
+    msgEl.textContent = 'Saving…';
+    await commitFixes(`video update: ${fix.id} (+${added.length})`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className='row-msg ok'; m2.textContent = `Added ${added.length} video(s).`; }
+  } catch (e){ msgEl.className='row-msg err'; msgEl.textContent = e.message || 'Upload failed.'; }
+}
+
 const staged = {};
 async function stageFiles(fixId){
   const input = document.getElementById(`upFiles-${fixId}`);
   const listEl = document.getElementById(`upList-${fixId}`);
   const fix = fixes.find(x => x.id === fixId);
   const files = Array.from(input.files);
-  try { alert('[DIAG add] picked ' + files.length + ' file(s):\n' + (files.map((f,i)=>`${i+1}. ${f.name||'(no name)'}\n   ${f.type||'no type'} · ${(f.size/1048576).toFixed(1)} MB · video=${isVideo(f)}`).join('\n') || '(none)')); } catch(e){}
   staged[fixId] = [];
   listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each item was taken — detected automatically, tap to correct:</div>' : '';
   for (const f0 of files){
@@ -1476,7 +1524,6 @@ async function searchPlace(){
 }
 
 function photoCountHint(){
-  try { const _f = Array.from(document.getElementById('fPhotos').files); alert('[DIAG report] picked ' + _f.length + ' file(s):\n' + (_f.map((f,i)=>`${i+1}. ${f.name||'(no name)'}\n   ${f.type||'no type'} · ${(f.size/1048576).toFixed(1)} MB · video=${isVideo(f)}`).join('\n') || '(none)')); } catch(e){}
   const n = document.getElementById('fPhotos').files.length;
   const hint = document.getElementById('fPhotosHint');
   if (!n){
@@ -2157,6 +2204,7 @@ function renderMapAndList(){
       ? ''
       : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || !isMaster()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${isNativeApp() ? `<button class="btn small secondary" onclick="event.stopPropagation();addNativeVideo('${f.id}')">🎬 Add video</button>` : ''}
           ${!isMaster() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
 
     const detailInner = (isMaster() && editFixId === f.id)
