@@ -1148,6 +1148,7 @@ async function stageFiles(fixId){
   const listEl = document.getElementById(`upList-${fixId}`);
   const fix = fixes.find(x => x.id === fixId);
   const files = Array.from(input.files);
+  try { alert('[DIAG add] picked ' + files.length + ' file(s):\n' + (files.map((f,i)=>`${i+1}. ${f.name||'(no name)'}\n   ${f.type||'no type'} · ${(f.size/1048576).toFixed(1)} MB · video=${isVideo(f)}`).join('\n') || '(none)')); } catch(e){}
   staged[fixId] = [];
   listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each item was taken — detected automatically, tap to correct:</div>' : '';
   for (const f0 of files){
@@ -1475,6 +1476,7 @@ async function searchPlace(){
 }
 
 function photoCountHint(){
+  try { const _f = Array.from(document.getElementById('fPhotos').files); alert('[DIAG report] picked ' + _f.length + ' file(s):\n' + (_f.map((f,i)=>`${i+1}. ${f.name||'(no name)'}\n   ${f.type||'no type'} · ${(f.size/1048576).toFixed(1)} MB · video=${isVideo(f)}`).join('\n') || '(none)')); } catch(e){}
   const n = document.getElementById('fPhotos').files.length;
   const hint = document.getElementById('fPhotosHint');
   if (!n){
