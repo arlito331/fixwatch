@@ -121,6 +121,9 @@ a{color:inherit;}
 .car-day{font-size:11px;font-weight:800;color:var(--accent);}
 .car-item img{width:150px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
 .car-item img:hover{transform:scale(1.05);}
+.car-media{position:relative;display:inline-block;cursor:pointer;}
+.car-media .vid-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;padding-left:3px;pointer-events:none;border:1.5px solid rgba(255,255,255,.85);}
+#showVid{max-width:92vw;max-height:74vh;border-radius:10px;border:1px solid #333;background:#000;}
 
 .tl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px dashed #2c2c2e;}
 .tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
@@ -294,7 +297,7 @@ a{color:inherit;}
     <div class="field">
       <label>Photos of the pothole (required — 1 to 3)</label>
       <input id="fPhotos" type="file" accept="image/*,video/*" multiple onchange="photoCountHint()"/>
-      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
+      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos (up to 25 MB each) are kept and play right in the timeline. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -338,6 +341,7 @@ a{color:inherit;}
   <button id="showPrev" class="show-nav" onclick="navShow(-1)">‹</button>
   <button id="showNext" class="show-nav" onclick="navShow(1)">›</button>
   <img id="showImg" alt=""/>
+  <video id="showVid" controls playsinline webkit-playsinline preload="metadata" style="display:none;"></video>
   <div id="showDay"></div>
   <div id="showSub"></div>
 </div>
@@ -437,28 +441,38 @@ async function unlockWithPassword(pass){
   }
   return null;
 }
-// Photos decrypt on demand into object URLs, once each per session.
+// Media (photos and video clips) decrypt on demand into object URLs, once each
+// per session. Videos are stored the same way as photos — one AES-GCM blob at
+// <path>.enc — just with a video path/extension.
 const _photoURLs = new Map();
-function photoURL(p){
-  if (!_photoURLs.has(p.path)){
-    _photoURLs.set(p.path, (async () => {
+function isVideoPath(path){ return /\.(mp4|mov|m4v|webm|3gp)$/i.test(path || ''); }
+function mimeForPath(path){
+  const ext = (path || '').split('.').pop().toLowerCase();
+  return {mp4:'video/mp4', m4v:'video/mp4', mov:'video/quicktime', webm:'video/webm', '3gp':'video/3gpp'}[ext] || 'image/jpeg';
+}
+function mediaURL(path){
+  if (!_photoURLs.has(path)){
+    _photoURLs.set(path, (async () => {
       let bytes = null;
-      const res = await fetch(RAW_BASE + p.path + '.enc').catch(() => null);
+      const res = await fetch(RAW_BASE + path + '.enc').catch(() => null);
       if (res && res.ok) bytes = new Uint8Array(await res.arrayBuffer());
-      // A photo uploaded moments ago is committed but not yet on the raw CDN,
-      // so it 404s there and the image came up blank. Ask the API, which is
-      // always current, before giving up.
+      // A file uploaded moments ago is committed but not yet on the raw CDN,
+      // so it 404s there and came up blank. Ask the API, which is always
+      // current, before giving up.
       if (!bytes && getGhToken()){
-        const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`).catch(() => null);
+        const r = await ghFetch(`${API_BASE}${path}.enc?ref=main`).catch(() => null);
         if (r && r.ok) bytes = bytesFromB64((await r.json()).content.replace(/\n/g,''));
       }
-      if (!bytes) throw new Error('photo fetch failed');
+      if (!bytes) throw new Error('media fetch failed');
       const pt = await aesDecrypt(bytes);
-      return URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
-    })().catch(err => { _photoURLs.delete(p.path); throw err; }));
+      return URL.createObjectURL(new Blob([pt], {type: mimeForPath(path)}));
+    })().catch(err => { _photoURLs.delete(path); throw err; }));
   }
-  return _photoURLs.get(p.path);
+  return _photoURLs.get(path);
 }
+// A carousel/timeline item shows its poster (video) or the image itself (photo).
+function thumbPath(p){ return p.type === 'video' ? (p.poster || p.path) : p.path; }
+function photoURL(p){ return mediaURL(thumbPath(p)); }
 function hydrateEncImages(root){
   (root || document).querySelectorAll('img[data-encpath]').forEach(img => {
     const path = img.dataset.encpath; delete img.dataset.encpath;
@@ -901,9 +915,13 @@ async function drawStamp(ctx, W, H, stamp){
 // old stamp are gone, so the fresh stamp sits on a dark plaque that covers
 // the old text block; the repo file is replaced (new path, old one deleted).
 async function restampPhoto(fix, p, oldDate){
+  // For a video the stamp lives on its poster still, not the clip itself.
+  const isVid = p.type === 'video';
+  const imgPath = isVid ? p.poster : p.path;
+  if (!imgPath) return;
   let src = null;
   try { // API copy is always fresh; the raw CDN can lag minutes behind
-    const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`);
+    const r = await ghFetch(`${API_BASE}${imgPath}.enc?ref=main`);
     if (r.ok){
       const pt = await aesDecrypt(bytesFromB64((await r.json()).content.replace(/\n/g, '')));
       src = URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
@@ -931,10 +949,10 @@ async function restampPhoto(fix, p, oldDate){
   ctx.fill();
   drawStampText(ctx, W, H, {lat: fix.lat, lng: fix.lng, lines: newLines});
   const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r.jpg`;
+  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r${isVid ? '_poster' : ''}.jpg`;
   await ghPutFile(newPath + '.enc', await encryptB64Image(b64), `re-stamp photo: ${fix.id}`);
-  const oldPath = p.path;
-  p.path = newPath;
+  const oldPath = imgPath;
+  if (isVid) p.poster = newPath; else p.path = newPath;
   await ghDeleteFile(oldPath + '.enc', `remove old photo: ${fix.id}`).catch(() => {});
 }
 
@@ -943,14 +961,28 @@ async function uploadPhotoItems(fix, items, progressCb){
   const addr = await stampAddress(fix);
   const added = [];
   for (let i = 0; i < items.length; i++){
-    const {file, date, time} = items[i];
-    progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+    const it = items[i];
+    const {date, time} = it;
+    const base = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}`;
     const stamp = {lat: fix.lat, lng: fix.lng, lines: buildStampLines(fix, addr, date, time)};
-    const b64 = await compressImage(file, stamp);
-    const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
-    await ghPutFile(path + '.enc', await encryptB64Image(b64), `photo: ${fix.id}`);
-    // time is kept so a later date edit can rebuild the stamp's datetime line
-    added.push({date, path, ...(time ? {time} : {})});
+    if (it.kind === 'video'){
+      progressCb && progressCb(`Uploading video ${i+1}/${items.length}…`);
+      // Stamped poster still (shown as the thumbnail and as the teaser frame).
+      const posterPath = `${base}_poster.jpg`;
+      await ghPutFile(posterPath + '.enc', await encryptB64Image(await compressImage(it.poster, stamp)), `poster: ${fix.id}`);
+      // The clip itself, stored as-is and AES-encrypted like a photo.
+      const ext = ((it.file.name || '').match(/\.(mp4|mov|m4v|webm|3gp)$/i) || [, 'mp4'])[1].toLowerCase();
+      const vidBytes = new Uint8Array(await it.file.arrayBuffer());
+      const vidPath = `${base}.${ext}`;
+      await ghPutFile(vidPath + '.enc', b64FromBytes(await aesEncrypt(vidBytes)), `video: ${fix.id}`);
+      added.push({date, path: vidPath, poster: posterPath, type: 'video', ...(time ? {time} : {})});
+    } else {
+      progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+      const path = `${base}.jpg`;
+      await ghPutFile(path + '.enc', await encryptB64Image(await compressImage(it.file, stamp)), `photo: ${fix.id}`);
+      // time is kept so a later date edit can rebuild the stamp's datetime line
+      added.push({date, path, ...(time ? {time} : {})});
+    }
   }
   return added;
 }
@@ -1065,7 +1097,23 @@ async function asImageFile(file, progressCb){
   return file;
 }
 
-// ---------- staged update photos (one date per photo) ----------
+// ---------- staged update items: photos and video clips ----------
+const MAX_VIDEO_MB = 25, MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
+// Turn a picked file into a staged upload item. A video keeps the real clip
+// plus an auto-grabbed poster still; a photo passes through (a frame is
+// extracted only if someone hands us a video where a photo is expected).
+async function stageItem(file, forcedDate){
+  if (isVideo(file)){
+    if (file.size > MAX_VIDEO_BYTES) throw new Error(`Video is ${(file.size/1048576).toFixed(0)} MB — over the ${MAX_VIDEO_MB} MB limit.`);
+    const poster = await videoToImageFile(file);
+    const {date, time} = await bestPhotoDateTime(file);
+    return {file, poster, date: forcedDate || date, time, kind: 'video'};
+  }
+  const f = await asImageFile(file);
+  const {date, time} = await bestPhotoDateTime(f);
+  return {file: f, date: forcedDate || date, time, kind: 'photo'};
+}
+
 const staged = {};
 async function stageFiles(fixId){
   const input = document.getElementById(`upFiles-${fixId}`);
@@ -1073,25 +1121,24 @@ async function stageFiles(fixId){
   const fix = fixes.find(x => x.id === fixId);
   const files = Array.from(input.files);
   staged[fixId] = [];
-  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
+  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each item was taken — detected automatically, tap to correct:</div>' : '';
   for (const f0 of files){
-    let f;
-    try { f = await asImageFile(f0); }
+    let item;
+    try { item = await stageItem(f0); }
     catch (e){
       const err = document.createElement('div');
       err.className = 'stage-row'; err.style.color = 'var(--red)';
-      err.textContent = `⚠ Couldn't read ${f0.name || 'that file'} — skipped.`;
+      err.textContent = `⚠ ${e.message && /limit/.test(e.message) ? e.message : `Couldn't read ${f0.name || 'that file'}`} — skipped.`;
       listEl.appendChild(err); continue;
     }
-    const {date, time} = await bestPhotoDateTime(f);
     const i = staged[fixId].length;
-    staged[fixId].push({file: f, date, time});
+    staged[fixId].push(item);
     const row = document.createElement('div');
     row.className = 'stage-row';
-    row.innerHTML = `<span class="sr-name">${isVideo(f0) ? '🎬' : '📷'} ${esc(f0.name)}</span>
-      <input type="date" value="${date}" onclick="event.stopPropagation()"
+    row.innerHTML = `<span class="sr-name">${item.kind === 'video' ? '🎬' : '📷'} ${esc(f0.name)}</span>
+      <input type="date" value="${item.date}" onclick="event.stopPropagation()"
         onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
-      <span class="sr-day">Day ${dayNumber(fix, date)}</span>`;
+      <span class="sr-day">Day ${dayNumber(fix, item.date)}</span>`;
     listEl.appendChild(row);
   }
 }
@@ -1208,11 +1255,13 @@ async function deletePhoto(fixId, flatIdx){
   photoGroups(fix).forEach(g => g.photos.forEach(p => flat.push(p)));
   const p = flat[flatIdx];
   if (!p) return;
-  if (!confirm(`Delete this photo (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
+  const kind = p.type === 'video' ? 'video' : 'photo';
+  if (!confirm(`Delete this ${kind} (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting photo…';
+  msgEl.className = 'row-msg'; msgEl.textContent = `Deleting ${kind}…`;
   try {
-    if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+    if (p.path) await ghDeleteFile(p.path + '.enc', `delete ${kind}: ${fix.id}`);
+    if (p.poster) await ghDeleteFile(p.poster + '.enc', `delete poster: ${fix.id}`).catch(() => {});
     fix.photos = fix.photos.filter(x => x !== p);
     touch(fix);
     await commitFixes(`remove photo: ${fix.id}`);
@@ -1235,6 +1284,7 @@ async function deleteFix(fixId){
   try {
     for (const p of (fix.photos || [])){
       if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+      if (p.poster) await ghDeleteFile(p.poster + '.enc', `delete poster: ${fix.id}`).catch(() => {});
     }
     const before = fixes;
     fixes = fixes.filter(f => f.id !== fixId);
@@ -1401,14 +1451,17 @@ function photoCountHint(){
   const hint = document.getElementById('fPhotosHint');
   if (!n){
     hint.style.color = '';
-    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically.';
+    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos (up to 25 MB each) are kept and play in the timeline.';
   } else if (n > 3){
     hint.style.color = 'var(--red)';
     hint.textContent = `${n} files selected — the maximum is 3. Remove some before reporting.`;
   } else {
     const vids = [...document.getElementById('fPhotos').files].filter(isVideo).length;
-    hint.style.color = 'var(--accent)';
-    hint.textContent = `${n}/3 selected ✓${vids ? ` — ${vids} video(s) will become a still` : ''}`;
+    const over = [...document.getElementById('fPhotos').files].filter(f => isVideo(f) && f.size > MAX_VIDEO_BYTES).length;
+    hint.style.color = over ? 'var(--red)' : 'var(--accent)';
+    hint.textContent = over
+      ? `${over} video(s) over the ${MAX_VIDEO_MB} MB limit — remove or replace them.`
+      : `${n}/3 selected ✓${vids ? ` — ${vids} video(s) included` : ''}`;
   }
 }
 
@@ -1470,8 +1523,7 @@ async function logFix(){
   try {
     const items = [];
     for (const f of Array.from(photoInput.files)){
-      const img = await asImageFile(f, t => { msg.textContent = t; });
-      items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
+      items.push(await stageItem(f, dateVal));   // throws (caught below) if a video is over the size limit
     }
 
     entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
@@ -1700,11 +1752,20 @@ function fixFrames(fix){
   photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
   return frames;
 }
-function showFrame(){
+function showFrame(posterOnly){
   const f = lbFrames[lbIdx];
-  photoURL(f.p).then(u => { document.getElementById('showImg').src = u; });
+  const img = document.getElementById('showImg'), vid = document.getElementById('showVid');
+  const asVideo = f.p.type === 'video' && !posterOnly;   // timelapse (posterOnly) shows the still
+  if (asVideo){
+    img.style.display = 'none'; vid.style.display = '';
+    mediaURL(f.p.path).then(u => { vid.src = u; vid.play().catch(() => {}); }).catch(() => {});
+  } else {
+    try { vid.pause(); } catch (e) {}
+    vid.style.display = 'none'; img.style.display = '';
+    photoURL(f.p).then(u => { img.src = u; });   // poster for a video, the image itself for a photo
+  }
   document.getElementById('showDay').textContent = `Day ${f.day}`;
-  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
+  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'}${f.p.type === 'video' ? ' · 🎬' : ''} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
 }
 function openLightbox(fixId, idx){
   lbFix = fixes.find(f => f.id === fixId);
@@ -1724,7 +1785,7 @@ function navShow(d){
 function playShow(fixId){
   openLightbox(fixId, 0);
   const step = () => {
-    showFrame();
+    showFrame(true);   // timelapse: show each item as a still (video posters included)
     lbIdx = (lbIdx + 1) % lbFrames.length;
     showTimer = setTimeout(step, 1600);
   };
@@ -1732,6 +1793,8 @@ function playShow(fixId){
 }
 function stopShow(){
   clearTimeout(showTimer); showTimer = null;
+  const vid = document.getElementById('showVid');
+  try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) {}
   document.getElementById('showOverlay').classList.remove('on');
 }
 document.addEventListener('keydown', (e) => {
@@ -2042,8 +2105,10 @@ function renderMapAndList(){
             ${flat.map((it, idx) => `
               <div class="car-item">
                 <div class="car-day">Day ${it.day}</div>
-                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
-                <img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
+                ${isMaster() ? `<button class="ph-del" title="Delete this ${it.p.type === 'video' ? 'video' : 'photo'}" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
+                ${it.p.type === 'video'
+                  ? `<div class="car-media" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"><img loading="lazy" data-encpath="${esc(it.p.poster || it.p.path)}" alt="Day ${it.day}"/><span class="vid-badge">▶</span></div>`
+                  : `<img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>`}
                 <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
