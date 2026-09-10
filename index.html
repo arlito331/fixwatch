@@ -1065,30 +1065,54 @@ function videoToImageFile(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
-    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    v.preload = 'auto'; v.muted = true; v.defaultMuted = true;
+    v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
     let done = false;
-    const fail = m => { if (done) return; done = true; URL.revokeObjectURL(url); reject(new Error(m)); };
-    v.onloadedmetadata = () => {
-      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
-      v.currentTime = Math.min(1, d * 0.25);
-    };
-    v.onseeked = () => {
+    const timer = setTimeout(() => fail('video frame timed out'), 8000);
+    const cleanup = () => { clearTimeout(timer); try { v.pause(); } catch (e) {} try { URL.revokeObjectURL(url); } catch (e) {} };
+    const fail = m => { if (done) return; done = true; cleanup(); reject(new Error(m)); };
+    const grab = () => {
       if (done) return;
+      const w = v.videoWidth, h = v.videoHeight;
+      if (!w || !h) return;   // frame not decoded yet — wait for the next callback
       try {
         const c = document.createElement('canvas');
-        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.width = w; c.height = h;
         c.getContext('2d').drawImage(v, 0, 0);
         c.toBlob(blob => {
           if (!blob) return fail('could not read video frame');
-          done = true; URL.revokeObjectURL(url);
+          done = true; cleanup();
           const base = (file.name || 'video').replace(/\.[^.]+$/, '');
           resolve(new File([blob], base + '.jpg', {type: 'image/jpeg', lastModified: file.lastModified || Date.now()}));
         }, 'image/jpeg', 0.92);
       } catch (e){ fail('could not read video frame'); }
     };
+    v.onloadeddata = () => {
+      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
+      try { v.currentTime = Math.min(1, d * 0.25); } catch (e){ grab(); }
+    };
+    v.onseeked = grab;
+    // requestVideoFrameCallback fires when a real frame is painted — the most
+    // reliable "the frame is ready" signal on iOS, where 'seeked' can be flaky.
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) v.requestVideoFrameCallback(() => grab());
     v.onerror = () => fail('could not read video');
     v.src = url;
+    // Muted autoplay is allowed and forces iOS to actually decode a frame.
+    v.play().catch(() => {});
   });
+}
+// A dark placeholder still so a clip can always upload even if the phone
+// refuses to hand us a frame from it.
+async function makePlaceholderPoster(){
+  const c = document.createElement('canvas'); c.width = 720; c.height = 1280;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center';
+  ctx.font = '120px -apple-system, Helvetica'; ctx.fillText('🎬', c.width/2, c.height/2 - 10);
+  ctx.fillStyle = '#7ddfa6'; ctx.font = '600 40px -apple-system, Helvetica';
+  ctx.fillText('Video', c.width/2, c.height/2 + 70);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  return new File([blob], 'poster.jpg', {type: 'image/jpeg'});
 }
 function isVideo(file){ return (file.type || '').startsWith('video/') || /\.(mp4|mov|m4v|avi|webm|3gp|mkv)$/i.test(file.name || ''); }
 // Turn a picked file into a photo file: extract a frame if it's a video.
@@ -1105,7 +1129,11 @@ const MAX_VIDEO_MB = 25, MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
 async function stageItem(file, forcedDate){
   if (isVideo(file)){
     if (file.size > MAX_VIDEO_BYTES) throw new Error(`Video is ${(file.size/1048576).toFixed(0)} MB — over the ${MAX_VIDEO_MB} MB limit.`);
-    const poster = await videoToImageFile(file);
+    // Grab a poster frame; if the phone won't give us one, fall back to a
+    // placeholder so the clip still uploads rather than silently blocking.
+    let poster;
+    try { poster = await videoToImageFile(file); }
+    catch (e){ poster = await makePlaceholderPoster(); }
     const {date, time} = await bestPhotoDateTime(file);
     return {file, poster, date: forcedDate || date, time, kind: 'video'};
   }
