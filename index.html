@@ -1894,6 +1894,28 @@ async function exportVideo(fixId, btn){
     btn.textContent = 'Loading photos…';
     const imgs = await Promise.all(frames.map(async f => loadImg(await photoURL(f.p))));
 
+    // Video frames should PLAY inside the teaser, not just show their poster.
+    // Preload each clip into a muted, inline <video> we can draw onto the canvas
+    // frame-by-frame during its segment. (A photo slot stays null.)
+    btn.textContent = 'Loading clips…';
+    const vids = await Promise.all(frames.map(async f => {
+      if (f.p.type !== 'video') return null;
+      try {
+        const url = await mediaURL(f.p.path);
+        const v = document.createElement('video');
+        v.src = url; v.muted = true; v.defaultMuted = true; v.playsInline = true;
+        v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+        v.setAttribute('muted', ''); v.preload = 'auto';
+        await new Promise(res => {
+          let done = false; const ok = () => { if (!done){ done = true; res(); } };
+          v.onloadeddata = ok; v.oncanplaythrough = ok; v.onerror = ok;
+          setTimeout(ok, 8000); v.load();
+        });
+        return v.videoWidth ? v : null;
+      } catch (e){ return null; }
+    }));
+    const hasVid = i => frames[i].p.type === 'video' && !!vids[i];
+
     // Brand logo + optional soundtrack (drop assets/teaser_music.mp3 in the repo to enable music)
     btn.textContent = 'Loading assets…';
     const logo = await new Promise(res => {
@@ -1918,8 +1940,12 @@ async function exportVideo(fixId, btn){
     } catch (e){ audioDest = null; }
 
     // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
-    const W = 1080, H = 1920, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800; // 9:16 vertical for iPhone
-    const FRAME_MS = Math.max(200, Math.min(1100, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
+    const W = 1080, H = 1920, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800, VIDEO_MS = 6000; // 9:16 vertical for iPhone
+    // Videos play for up to VIDEO_MS each; photos share whatever time is left.
+    const nVideos = imgs.reduce((n, _, i) => n + (hasVid(i) ? 1 : 0), 0);
+    const nPhotos = imgs.length - nVideos;
+    const photoBudget = MAX_MS - LOGO_MS * 2 - LOC_MS - nVideos * VIDEO_MS;
+    const FRAME_MS = nPhotos > 0 ? Math.max(200, Math.min(1100, Math.floor(photoBudget / nPhotos))) : 700;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const stream = c.captureStream(30);
@@ -1954,12 +1980,13 @@ async function exportVideo(fixId, btn){
       }
     };
     const fmtDate = (ds) => new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
-    const photoFrame = (i) => {
-      const im = imgs[i], f = frames[i];
+    const mediaFrame = (i, src) => {
+      const f = frames[i];
+      const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
       ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
-      const s = Math.min(W / im.width, H / im.height);
-      const w = im.width * s, h = im.height * s;
-      ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+      const s = Math.min(W / sw, H / sh);
+      const w = sw * s, h = sh * s;
+      ctx.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
       const g = ctx.createLinearGradient(0, H - 210, 0, H);
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
       ctx.fillStyle = g; ctx.fillRect(0, H - 210, W, 210);
@@ -1987,7 +2014,21 @@ async function exportVideo(fixId, btn){
       [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
       [`${tag} · ${isFixed(fix) ? 'Fixed ' + fix.fix_date : 'Reported ' + fix.report_date}`, '#999', '400 24px -apple-system, Helvetica'],
     ]), ms: LOC_MS});
-    for (let i = 0; i < imgs.length; i++) segments.push({draw: () => photoFrame(i), ms: FRAME_MS});
+    for (let i = 0; i < imgs.length; i++){
+      if (hasVid(i)){
+        const v = vids[i];
+        const clipMs = (isFinite(v.duration) && v.duration > 0)
+          ? Math.min(VIDEO_MS, Math.round(v.duration * 1000)) : VIDEO_MS;
+        segments.push({
+          draw: () => mediaFrame(i, v),
+          ms: clipMs,
+          enter: () => { try { v.currentTime = 0; const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
+          exit:  () => { try { v.pause(); } catch (e){} },
+        });
+      } else {
+        segments.push({draw: () => mediaFrame(i, imgs[i]), ms: FRAME_MS});
+      }
+    }
     segments.push({draw: logoCard, ms: LOGO_MS});
 
     btn.textContent = 'Rendering…';
@@ -2002,11 +2043,14 @@ async function exportVideo(fixId, btn){
     await new Promise(resolve => {
       let i = 0, segStart = performance.now();
       const t0 = performance.now();
+      if (segments[0].enter) segments[0].enter();
       const iv = setInterval(() => {
         const now = performance.now();
         if (now - segStart >= segments[i].ms){
+          if (segments[i].exit) segments[i].exit();
           i++; segStart = now;
           if (i >= segments.length){ clearInterval(iv); return resolve(); }
+          if (segments[i].enter) segments[i].enter();
         }
         const el = now - segStart;
         if (i > 0 && el < FADE_MS){
