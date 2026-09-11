@@ -2017,12 +2017,15 @@ async function exportVideo(fixId, btn){
     for (let i = 0; i < imgs.length; i++){
       if (hasVid(i)){
         const v = vids[i];
-        const clipMs = (isFinite(v.duration) && v.duration > 0)
-          ? Math.min(VIDEO_MS, Math.round(v.duration * 1000)) : VIDEO_MS;
+        const durMs = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration * 1000) : VIDEO_MS;
+        const clipMs = Math.min(VIDEO_MS, durMs);
+        // Play the MIDDLE of the clip: the start of a phone video is usually the
+        // weakest bit (raising/aiming the phone), so center the 6s window.
+        const startSec = durMs > VIDEO_MS ? (durMs - VIDEO_MS) / 2000 : 0;
         segments.push({
           draw: () => mediaFrame(i, v),
           ms: clipMs,
-          enter: () => { try { v.currentTime = 0; const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
+          enter: () => { try { v.currentTime = startSec; const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
           exit:  () => { try { v.pause(); } catch (e){} },
         });
       } else {
