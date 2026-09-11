@@ -341,7 +341,7 @@ a{color:inherit;}
   <button id="showPrev" class="show-nav" onclick="navShow(-1)">‹</button>
   <button id="showNext" class="show-nav" onclick="navShow(1)">›</button>
   <img id="showImg" alt=""/>
-  <video id="showVid" controls playsinline webkit-playsinline preload="metadata" style="display:none;"></video>
+  <video id="showVid" controls muted playsinline webkit-playsinline preload="metadata" style="display:none;"></video>
   <div id="showDay"></div>
   <div id="showSub"></div>
 </div>
@@ -1835,6 +1835,7 @@ function showFrame(posterOnly){
   const asVideo = f.p.type === 'video' && !posterOnly;   // timelapse (posterOnly) shows the still
   if (asVideo){
     img.style.display = 'none'; vid.style.display = '';
+    vid.muted = true; vid.defaultMuted = true;   // videos are silent in-app (audio stays in the file but is never played or shared)
     mediaURL(f.p.path).then(u => { vid.src = u; vid.play().catch(() => {}); }).catch(() => {});
   } else {
     try { vid.pause(); } catch (e) {}
