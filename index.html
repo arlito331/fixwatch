@@ -737,9 +737,20 @@ function daysSince(dateStr){
   const todayUTC = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
   return Math.max(0, Math.round((todayUTC - fixDate) / 86400000));
 }
-// Photo "Day N" counts from the report date for open potholes, from the fix
-// date once fixed (so Day 0 = the day of the repair, matching the old data).
-function baseDate(f){ return f.fix_date || f.report_date || (f.logged_at || '').slice(0, 10); }
+// Photo "Day N" counts from the START of the pothole's timeline — the earliest
+// of its report date and any of its photo dates — so the first photo is Day 0
+// and the rest count up from there. (Anchoring only to the report/fix date
+// floored any photo taken earlier than that date to Day 0, which is why photos
+// with a correct older date got stuck on Day 0.)
+function baseDate(f){
+  const cands = [];
+  if (f.report_date) cands.push(f.report_date);
+  if (f.fix_date) cands.push(f.fix_date);
+  if (f.logged_at) cands.push(f.logged_at.slice(0, 10));
+  (f.photos || []).forEach(p => { if (p && p.date) cands.push(p.date); });
+  cands.sort();  // ISO YYYY-MM-DD sorts chronologically as text
+  return cands[0] || new Date().toISOString().slice(0, 10);
+}
 function dayNumber(fix, dateStr){
   const a = new Date(baseDate(fix) + 'T00:00:00Z');
   const b = new Date(dateStr + 'T00:00:00Z');
