@@ -991,6 +991,49 @@ async function uploadPhotoItems(fix, items, progressCb){
 }
 
 // ---------- photo date detection (EXIF, then file date, then today) ----------
+// Parse a standalone TIFF/EXIF block for the capture date. `t` is the byte
+// offset of the TIFF header ("II" little-endian or "MM" big-endian). Used for
+// JPEG APP1 blocks AND for the EXIF embedded inside HEIC/HEIF (iPhone) photos.
+function _tiffDate(v, t){
+  try {
+    const bom = v.getUint16(t);
+    if (bom !== 0x4949 && bom !== 0x4D4D) return null;
+    const little = bom === 0x4949;
+    if (v.getUint16(t + 2, little) !== 0x002A) return null; // TIFF magic (42)
+    const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
+    const readAscii = entry => {
+      const n = g32(entry + 4);
+      const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
+      let s = '';
+      for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
+      return s;
+    };
+    const scanIFD = (ifd, want) => {
+      if (ifd < 0 || ifd + 2 > v.byteLength) return null;
+      const cnt = g16(ifd);
+      for (let e = 0; e < cnt; e++){
+        const entry = ifd + 2 + e * 12;
+        if (entry + 12 > v.byteLength) break;
+        if (g16(entry) === want) return entry;
+      }
+      return null;
+    };
+    const ifd0 = t + g32(t + 4);
+    let dateStr = null;
+    const exifPtr = scanIFD(ifd0, 0x8769);           // Exif sub-IFD pointer
+    if (exifPtr){
+      const dto = scanIFD(t + g32(exifPtr + 8), 0x9003); // DateTimeOriginal
+      if (dto) dateStr = readAscii(dto);
+    }
+    if (!dateStr){
+      const dt = scanIFD(ifd0, 0x0132);              // DateTime (fallback)
+      if (dt) dateStr = readAscii(dt);
+    }
+    const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+    return m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null;
+  } catch (e){ return null; }
+}
+
 function readExifDate(file){
   return new Promise(resolve => {
     const fr = new FileReader();
@@ -998,51 +1041,36 @@ function readExifDate(file){
     fr.onload = () => {
       try {
         const v = new DataView(fr.result);
-        if (v.getUint16(0) !== 0xFFD8) return resolve(null);
-        let o = 2;
-        while (o + 4 <= v.byteLength){
-          const marker = v.getUint16(o);
-          const size = v.getUint16(o + 2);
-          if (marker === 0xFFE1 && o + 8 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
-            const t = o + 10;
-            const little = v.getUint16(t) === 0x4949;
-            const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
-            const readAscii = entry => {
-              const n = g32(entry + 4);
-              const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
-              let s = '';
-              for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
-              return s;
-            };
-            const scanIFD = (ifd, want) => {
-              const cnt = g16(ifd);
-              for (let e = 0; e < cnt; e++){
-                const entry = ifd + 2 + e * 12;
-                if (g16(entry) === want) return entry;
-              }
-              return null;
-            };
-            const ifd0 = t + g32(t + 4);
-            let dateStr = null;
-            const exifPtr = scanIFD(ifd0, 0x8769);
-            if (exifPtr){
-              const dto = scanIFD(t + g32(exifPtr + 8), 0x9003);
-              if (dto) dateStr = readAscii(dto);
+        // JPEG: jump straight to the APP1/Exif segment.
+        if (v.getUint16(0) === 0xFFD8){
+          let o = 2;
+          while (o + 4 <= v.byteLength){
+            const marker = v.getUint16(o), size = v.getUint16(o + 2);
+            if (marker === 0xFFE1 && o + 10 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
+              const d = _tiffDate(v, o + 10);
+              if (d) return resolve(d);
+              break;
             }
-            if (!dateStr){
-              const dt = scanIFD(ifd0, 0x0132);
-              if (dt) dateStr = readAscii(dt);
-            }
-            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
-            return resolve(m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null);
+            if ((marker & 0xFF00) !== 0xFF00) break;
+            o += 2 + size;
           }
-          if ((marker & 0xFF00) !== 0xFF00) break;
-          o += 2 + size;
+        }
+        // HEIC/HEIF (iPhone default) and anything else: the EXIF is not in a JPEG
+        // APP1, so scan for an embedded TIFF header ("II*\0" / "MM\0*") and read
+        // its DateTimeOriginal. The strict date match guards against stray hits.
+        for (let p = 0; p + 8 < v.byteLength; p++){
+          const w = v.getUint16(p);
+          if ((w === 0x4949 && v.getUint16(p + 2, true) === 0x002A) ||
+              (w === 0x4D4D && v.getUint16(p + 2, false) === 0x002A)){
+            const d = _tiffDate(v, p);
+            if (d) return resolve(d);
+          }
         }
         resolve(null);
       } catch (e){ resolve(null); }
     };
-    fr.readAsArrayBuffer(file.slice(0, 256 * 1024));
+    // Read enough to cover HEIC metadata, which sits further in than a JPEG's.
+    fr.readAsArrayBuffer(file.slice(0, 2 * 1024 * 1024));
   });
 }
 
