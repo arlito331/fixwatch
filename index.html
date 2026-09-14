@@ -675,25 +675,49 @@ async function ghFetch(url, opts={}){
   });
 }
 
-// Rapid back-to-back commits (each photo file, then fixes.json) sometimes
-// race on the branch and GitHub answers 409/422 even though nothing is
-// wrong — retrying with a fresh sha after a short pause heals it. Without
-// this, the second photo of an upload "failed" while actually being saved.
+// Uploading several photos plus the fixes list fires a burst of commits to the
+// same branch in a few seconds. GitHub answers that burst with a mix of:
+//   • 409/422 — the branch moved between our read and write (need a fresh sha),
+//   • 403/429 — a secondary rate limit ("you're going too fast"),
+//   • 5xx / dropped connection — a transient server or network hiccup.
+// All of these are temporary. The old code only retried 409/422 (3x) and gave
+// up on everything else, so under a burst the LAST write (the fixes list) often
+// failed — the photo files were already up, but the record never recorded them,
+// so the count didn't move and the photos were left orphaned. Retry every
+// temporary failure with exponential backoff (honoring Retry-After) so the
+// whole burst lands.
+const _MAX_PUT_TRIES = 6;
+function _backoffMs(attempt){ return Math.min(8000, 600 * Math.pow(2, attempt)); }
 async function ghPutFile(path, b64, message, sha){
   for (let attempt = 0; ; attempt++){
-    const res = await ghFetch(API_BASE + path, {
-      method: 'PUT',
-      body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
-    });
+    let res;
+    try {
+      res = await ghFetch(API_BASE + path, {
+        method: 'PUT',
+        body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
+      });
+    } catch (netErr){
+      // Connection reset / offline blip — wait and retry rather than fail the save.
+      if (attempt < _MAX_PUT_TRIES){ await new Promise(r => setTimeout(r, _backoffMs(attempt))); continue; }
+      throw new Error('Network error while saving — check your connection and try again.');
+    }
     if (res.ok) return res.json();
     if (res.status === 401){
       markTokenExpired();
       throw new Error(TOKEN_EXPIRED_MSG);
     }
-    if ((res.status === 409 || res.status === 422) && attempt < 3){
-      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
-      const g = await ghFetch(`${API_BASE}${path}?ref=main`);
-      if (g.ok) sha = (await g.json()).sha;
+    // Branch moved under a rapid burst — grab the current sha and retry.
+    if ((res.status === 409 || res.status === 422) && attempt < _MAX_PUT_TRIES){
+      await new Promise(r => setTimeout(r, _backoffMs(attempt)));
+      const g = await ghFetch(`${API_BASE}${path}?ref=main`).catch(() => null);
+      if (g && g.ok) sha = (await g.json()).sha;
+      continue;
+    }
+    // Secondary rate limit (403/429) or a transient server error (5xx) — wait
+    // out the throttle (Retry-After if GitHub sent one) and retry.
+    if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt < _MAX_PUT_TRIES){
+      const ra = parseInt(res.headers.get('retry-after') || '', 10);
+      await new Promise(r => setTimeout(r, ra > 0 ? ra * 1000 : _backoffMs(attempt)));
       continue;
     }
     const e = await res.json().catch(() => ({}));
