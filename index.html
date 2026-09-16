@@ -121,6 +121,9 @@ a{color:inherit;}
 .car-day{font-size:11px;font-weight:800;color:var(--accent);}
 .car-item img{width:150px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:transform .12s;}
 .car-item img:hover{transform:scale(1.05);}
+.car-media{position:relative;display:inline-block;cursor:pointer;}
+.car-media .vid-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;padding-left:3px;pointer-events:none;border:1.5px solid rgba(255,255,255,.85);}
+#showVid{max-width:92vw;max-height:74vh;border-radius:10px;border:1px solid #333;background:#000;}
 
 .tl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px dashed #2c2c2e;}
 .tl-actions input[type=date]{background:#0a0a0a;border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;outline:none;}
@@ -294,7 +297,7 @@ a{color:inherit;}
     <div class="field">
       <label>Photos of the pothole (required — 1 to 3)</label>
       <input id="fPhotos" type="file" accept="image/*,video/*" multiple onchange="photoCountHint()"/>
-      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
+      <div class="field-hint" id="fPhotosHint">At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos (up to 25 MB each) are kept and play right in the timeline. These are the "before" shots — the report shows as a red dot until it's marked fixed.</div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -338,6 +341,7 @@ a{color:inherit;}
   <button id="showPrev" class="show-nav" onclick="navShow(-1)">‹</button>
   <button id="showNext" class="show-nav" onclick="navShow(1)">›</button>
   <img id="showImg" alt=""/>
+  <video id="showVid" controls muted playsinline webkit-playsinline preload="metadata" style="display:none;"></video>
   <div id="showDay"></div>
   <div id="showSub"></div>
 </div>
@@ -437,28 +441,38 @@ async function unlockWithPassword(pass){
   }
   return null;
 }
-// Photos decrypt on demand into object URLs, once each per session.
+// Media (photos and video clips) decrypt on demand into object URLs, once each
+// per session. Videos are stored the same way as photos — one AES-GCM blob at
+// <path>.enc — just with a video path/extension.
 const _photoURLs = new Map();
-function photoURL(p){
-  if (!_photoURLs.has(p.path)){
-    _photoURLs.set(p.path, (async () => {
+function isVideoPath(path){ return /\.(mp4|mov|m4v|webm|3gp)$/i.test(path || ''); }
+function mimeForPath(path){
+  const ext = (path || '').split('.').pop().toLowerCase();
+  return {mp4:'video/mp4', m4v:'video/mp4', mov:'video/quicktime', webm:'video/webm', '3gp':'video/3gpp'}[ext] || 'image/jpeg';
+}
+function mediaURL(path){
+  if (!_photoURLs.has(path)){
+    _photoURLs.set(path, (async () => {
       let bytes = null;
-      const res = await fetch(RAW_BASE + p.path + '.enc').catch(() => null);
+      const res = await fetch(RAW_BASE + path + '.enc').catch(() => null);
       if (res && res.ok) bytes = new Uint8Array(await res.arrayBuffer());
-      // A photo uploaded moments ago is committed but not yet on the raw CDN,
-      // so it 404s there and the image came up blank. Ask the API, which is
-      // always current, before giving up.
+      // A file uploaded moments ago is committed but not yet on the raw CDN,
+      // so it 404s there and came up blank. Ask the API, which is always
+      // current, before giving up.
       if (!bytes && getGhToken()){
-        const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`).catch(() => null);
+        const r = await ghFetch(`${API_BASE}${path}.enc?ref=main`).catch(() => null);
         if (r && r.ok) bytes = bytesFromB64((await r.json()).content.replace(/\n/g,''));
       }
-      if (!bytes) throw new Error('photo fetch failed');
+      if (!bytes) throw new Error('media fetch failed');
       const pt = await aesDecrypt(bytes);
-      return URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
-    })().catch(err => { _photoURLs.delete(p.path); throw err; }));
+      return URL.createObjectURL(new Blob([pt], {type: mimeForPath(path)}));
+    })().catch(err => { _photoURLs.delete(path); throw err; }));
   }
-  return _photoURLs.get(p.path);
+  return _photoURLs.get(path);
 }
+// A carousel/timeline item shows its poster (video) or the image itself (photo).
+function thumbPath(p){ return p.type === 'video' ? (p.poster || p.path) : p.path; }
+function photoURL(p){ return mediaURL(thumbPath(p)); }
 function hydrateEncImages(root){
   (root || document).querySelectorAll('img[data-encpath]').forEach(img => {
     const path = img.dataset.encpath; delete img.dataset.encpath;
@@ -492,6 +506,9 @@ const TERRITORIES = {
   'ec':        {country: 'Ecuador',   chip: 'ECUADOR'},
   'guatemala': {country: 'Guatemala', chip: 'GUATEMALA'},
   'gt':        {country: 'Guatemala', chip: 'GUATEMALA'},
+  'panama':    {country: 'Panama',    chip: 'PANAMA'},
+  'panamá':    {country: 'Panama',    chip: 'PANAMA'},
+  'pa':        {country: 'Panama',    chip: 'PANAMA'},
 };
 function isTerritory(){ return localStorage.getItem('fw_role') === 'territory' && !!getGhToken(); }
 // Country limit applies to both kinds of country account: the staff-code one
@@ -658,25 +675,49 @@ async function ghFetch(url, opts={}){
   });
 }
 
-// Rapid back-to-back commits (each photo file, then fixes.json) sometimes
-// race on the branch and GitHub answers 409/422 even though nothing is
-// wrong — retrying with a fresh sha after a short pause heals it. Without
-// this, the second photo of an upload "failed" while actually being saved.
+// Uploading several photos plus the fixes list fires a burst of commits to the
+// same branch in a few seconds. GitHub answers that burst with a mix of:
+//   • 409/422 — the branch moved between our read and write (need a fresh sha),
+//   • 403/429 — a secondary rate limit ("you're going too fast"),
+//   • 5xx / dropped connection — a transient server or network hiccup.
+// All of these are temporary. The old code only retried 409/422 (3x) and gave
+// up on everything else, so under a burst the LAST write (the fixes list) often
+// failed — the photo files were already up, but the record never recorded them,
+// so the count didn't move and the photos were left orphaned. Retry every
+// temporary failure with exponential backoff (honoring Retry-After) so the
+// whole burst lands.
+const _MAX_PUT_TRIES = 6;
+function _backoffMs(attempt){ return Math.min(8000, 600 * Math.pow(2, attempt)); }
 async function ghPutFile(path, b64, message, sha){
   for (let attempt = 0; ; attempt++){
-    const res = await ghFetch(API_BASE + path, {
-      method: 'PUT',
-      body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
-    });
+    let res;
+    try {
+      res = await ghFetch(API_BASE + path, {
+        method: 'PUT',
+        body: JSON.stringify({message, content: b64, branch:'main', ...(sha ? {sha} : {})}),
+      });
+    } catch (netErr){
+      // Connection reset / offline blip — wait and retry rather than fail the save.
+      if (attempt < _MAX_PUT_TRIES){ await new Promise(r => setTimeout(r, _backoffMs(attempt))); continue; }
+      throw new Error('Network error while saving — check your connection and try again.');
+    }
     if (res.ok) return res.json();
     if (res.status === 401){
       markTokenExpired();
       throw new Error(TOKEN_EXPIRED_MSG);
     }
-    if ((res.status === 409 || res.status === 422) && attempt < 3){
-      await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
-      const g = await ghFetch(`${API_BASE}${path}?ref=main`);
-      if (g.ok) sha = (await g.json()).sha;
+    // Branch moved under a rapid burst — grab the current sha and retry.
+    if ((res.status === 409 || res.status === 422) && attempt < _MAX_PUT_TRIES){
+      await new Promise(r => setTimeout(r, _backoffMs(attempt)));
+      const g = await ghFetch(`${API_BASE}${path}?ref=main`).catch(() => null);
+      if (g && g.ok) sha = (await g.json()).sha;
+      continue;
+    }
+    // Secondary rate limit (403/429) or a transient server error (5xx) — wait
+    // out the throttle (Retry-After if GitHub sent one) and retry.
+    if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt < _MAX_PUT_TRIES){
+      const ra = parseInt(res.headers.get('retry-after') || '', 10);
+      await new Promise(r => setTimeout(r, ra > 0 ? ra * 1000 : _backoffMs(attempt)));
       continue;
     }
     const e = await res.json().catch(() => ({}));
@@ -720,9 +761,20 @@ function daysSince(dateStr){
   const todayUTC = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
   return Math.max(0, Math.round((todayUTC - fixDate) / 86400000));
 }
-// Photo "Day N" counts from the report date for open potholes, from the fix
-// date once fixed (so Day 0 = the day of the repair, matching the old data).
-function baseDate(f){ return f.fix_date || f.report_date || (f.logged_at || '').slice(0, 10); }
+// Photo "Day N" counts from the START of the pothole's timeline — the earliest
+// of its report date and any of its photo dates — so the first photo is Day 0
+// and the rest count up from there. (Anchoring only to the report/fix date
+// floored any photo taken earlier than that date to Day 0, which is why photos
+// with a correct older date got stuck on Day 0.)
+function baseDate(f){
+  const cands = [];
+  if (f.report_date) cands.push(f.report_date);
+  if (f.fix_date) cands.push(f.fix_date);
+  if (f.logged_at) cands.push(f.logged_at.slice(0, 10));
+  (f.photos || []).forEach(p => { if (p && p.date) cands.push(p.date); });
+  cands.sort();  // ISO YYYY-MM-DD sorts chronologically as text
+  return cands[0] || new Date().toISOString().slice(0, 10);
+}
 function dayNumber(fix, dateStr){
   const a = new Date(baseDate(fix) + 'T00:00:00Z');
   const b = new Date(dateStr + 'T00:00:00Z');
@@ -901,9 +953,13 @@ async function drawStamp(ctx, W, H, stamp){
 // old stamp are gone, so the fresh stamp sits on a dark plaque that covers
 // the old text block; the repo file is replaced (new path, old one deleted).
 async function restampPhoto(fix, p, oldDate){
+  // For a video the stamp lives on its poster still, not the clip itself.
+  const isVid = p.type === 'video';
+  const imgPath = isVid ? p.poster : p.path;
+  if (!imgPath) return;
   let src = null;
   try { // API copy is always fresh; the raw CDN can lag minutes behind
-    const r = await ghFetch(`${API_BASE}${p.path}.enc?ref=main`);
+    const r = await ghFetch(`${API_BASE}${imgPath}.enc?ref=main`);
     if (r.ok){
       const pt = await aesDecrypt(bytesFromB64((await r.json()).content.replace(/\n/g, '')));
       src = URL.createObjectURL(new Blob([pt], {type:'image/jpeg'}));
@@ -931,10 +987,10 @@ async function restampPhoto(fix, p, oldDate){
   ctx.fill();
   drawStampText(ctx, W, H, {lat: fix.lat, lng: fix.lng, lines: newLines});
   const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r.jpg`;
+  const newPath = `photos/${fix.id}/${p.date}_${Date.now().toString(36)}r${isVid ? '_poster' : ''}.jpg`;
   await ghPutFile(newPath + '.enc', await encryptB64Image(b64), `re-stamp photo: ${fix.id}`);
-  const oldPath = p.path;
-  p.path = newPath;
+  const oldPath = imgPath;
+  if (isVid) p.poster = newPath; else p.path = newPath;
   await ghDeleteFile(oldPath + '.enc', `remove old photo: ${fix.id}`).catch(() => {});
 }
 
@@ -943,19 +999,76 @@ async function uploadPhotoItems(fix, items, progressCb){
   const addr = await stampAddress(fix);
   const added = [];
   for (let i = 0; i < items.length; i++){
-    const {file, date, time} = items[i];
-    progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+    const it = items[i];
+    const {date, time} = it;
+    const base = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}`;
     const stamp = {lat: fix.lat, lng: fix.lng, lines: buildStampLines(fix, addr, date, time)};
-    const b64 = await compressImage(file, stamp);
-    const path = `photos/${fix.id}/${date}_${Date.now().toString(36)}${i}.jpg`;
-    await ghPutFile(path + '.enc', await encryptB64Image(b64), `photo: ${fix.id}`);
-    // time is kept so a later date edit can rebuild the stamp's datetime line
-    added.push({date, path, ...(time ? {time} : {})});
+    if (it.kind === 'video'){
+      progressCb && progressCb(`Uploading video ${i+1}/${items.length}…`);
+      // Stamped poster still (shown as the thumbnail and as the teaser frame).
+      const posterPath = `${base}_poster.jpg`;
+      await ghPutFile(posterPath + '.enc', await encryptB64Image(await compressImage(it.poster, stamp)), `poster: ${fix.id}`);
+      // The clip itself, stored as-is and AES-encrypted like a photo.
+      const ext = ((it.file.name || '').match(/\.(mp4|mov|m4v|webm|3gp)$/i) || [, 'mp4'])[1].toLowerCase();
+      const vidBytes = new Uint8Array(await it.file.arrayBuffer());
+      const vidPath = `${base}.${ext}`;
+      await ghPutFile(vidPath + '.enc', b64FromBytes(await aesEncrypt(vidBytes)), `video: ${fix.id}`);
+      added.push({date, path: vidPath, poster: posterPath, type: 'video', ...(time ? {time} : {})});
+    } else {
+      progressCb && progressCb(`Uploading photo ${i+1}/${items.length}…`);
+      const path = `${base}.jpg`;
+      await ghPutFile(path + '.enc', await encryptB64Image(await compressImage(it.file, stamp)), `photo: ${fix.id}`);
+      // time is kept so a later date edit can rebuild the stamp's datetime line
+      added.push({date, path, ...(time ? {time} : {})});
+    }
   }
   return added;
 }
 
 // ---------- photo date detection (EXIF, then file date, then today) ----------
+// Parse a standalone TIFF/EXIF block for the capture date. `t` is the byte
+// offset of the TIFF header ("II" little-endian or "MM" big-endian). Used for
+// JPEG APP1 blocks AND for the EXIF embedded inside HEIC/HEIF (iPhone) photos.
+function _tiffDate(v, t){
+  try {
+    const bom = v.getUint16(t);
+    if (bom !== 0x4949 && bom !== 0x4D4D) return null;
+    const little = bom === 0x4949;
+    if (v.getUint16(t + 2, little) !== 0x002A) return null; // TIFF magic (42)
+    const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
+    const readAscii = entry => {
+      const n = g32(entry + 4);
+      const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
+      let s = '';
+      for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
+      return s;
+    };
+    const scanIFD = (ifd, want) => {
+      if (ifd < 0 || ifd + 2 > v.byteLength) return null;
+      const cnt = g16(ifd);
+      for (let e = 0; e < cnt; e++){
+        const entry = ifd + 2 + e * 12;
+        if (entry + 12 > v.byteLength) break;
+        if (g16(entry) === want) return entry;
+      }
+      return null;
+    };
+    const ifd0 = t + g32(t + 4);
+    let dateStr = null;
+    const exifPtr = scanIFD(ifd0, 0x8769);           // Exif sub-IFD pointer
+    if (exifPtr){
+      const dto = scanIFD(t + g32(exifPtr + 8), 0x9003); // DateTimeOriginal
+      if (dto) dateStr = readAscii(dto);
+    }
+    if (!dateStr){
+      const dt = scanIFD(ifd0, 0x0132);              // DateTime (fallback)
+      if (dt) dateStr = readAscii(dt);
+    }
+    const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
+    return m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null;
+  } catch (e){ return null; }
+}
+
 function readExifDate(file){
   return new Promise(resolve => {
     const fr = new FileReader();
@@ -963,51 +1076,36 @@ function readExifDate(file){
     fr.onload = () => {
       try {
         const v = new DataView(fr.result);
-        if (v.getUint16(0) !== 0xFFD8) return resolve(null);
-        let o = 2;
-        while (o + 4 <= v.byteLength){
-          const marker = v.getUint16(o);
-          const size = v.getUint16(o + 2);
-          if (marker === 0xFFE1 && o + 8 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
-            const t = o + 10;
-            const little = v.getUint16(t) === 0x4949;
-            const g16 = p => v.getUint16(p, little), g32 = p => v.getUint32(p, little);
-            const readAscii = entry => {
-              const n = g32(entry + 4);
-              const p = n <= 4 ? entry + 8 : t + g32(entry + 8);
-              let s = '';
-              for (let k = 0; k < n - 1 && p + k < v.byteLength; k++) s += String.fromCharCode(v.getUint8(p + k));
-              return s;
-            };
-            const scanIFD = (ifd, want) => {
-              const cnt = g16(ifd);
-              for (let e = 0; e < cnt; e++){
-                const entry = ifd + 2 + e * 12;
-                if (g16(entry) === want) return entry;
-              }
-              return null;
-            };
-            const ifd0 = t + g32(t + 4);
-            let dateStr = null;
-            const exifPtr = scanIFD(ifd0, 0x8769);
-            if (exifPtr){
-              const dto = scanIFD(t + g32(exifPtr + 8), 0x9003);
-              if (dto) dateStr = readAscii(dto);
+        // JPEG: jump straight to the APP1/Exif segment.
+        if (v.getUint16(0) === 0xFFD8){
+          let o = 2;
+          while (o + 4 <= v.byteLength){
+            const marker = v.getUint16(o), size = v.getUint16(o + 2);
+            if (marker === 0xFFE1 && o + 10 <= v.byteLength && v.getUint32(o + 4) === 0x45786966){
+              const d = _tiffDate(v, o + 10);
+              if (d) return resolve(d);
+              break;
             }
-            if (!dateStr){
-              const dt = scanIFD(ifd0, 0x0132);
-              if (dt) dateStr = readAscii(dt);
-            }
-            const m = dateStr && dateStr.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?/);
-            return resolve(m ? {date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] || null} : null);
+            if ((marker & 0xFF00) !== 0xFF00) break;
+            o += 2 + size;
           }
-          if ((marker & 0xFF00) !== 0xFF00) break;
-          o += 2 + size;
+        }
+        // HEIC/HEIF (iPhone default) and anything else: the EXIF is not in a JPEG
+        // APP1, so scan for an embedded TIFF header ("II*\0" / "MM\0*") and read
+        // its DateTimeOriginal. The strict date match guards against stray hits.
+        for (let p = 0; p + 8 < v.byteLength; p++){
+          const w = v.getUint16(p);
+          if ((w === 0x4949 && v.getUint16(p + 2, true) === 0x002A) ||
+              (w === 0x4D4D && v.getUint16(p + 2, false) === 0x002A)){
+            const d = _tiffDate(v, p);
+            if (d) return resolve(d);
+          }
         }
         resolve(null);
       } catch (e){ resolve(null); }
     };
-    fr.readAsArrayBuffer(file.slice(0, 256 * 1024));
+    // Read enough to cover HEIC metadata, which sits further in than a JPEG's.
+    fr.readAsArrayBuffer(file.slice(0, 2 * 1024 * 1024));
   });
 }
 
@@ -1033,30 +1131,54 @@ function videoToImageFile(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
-    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    v.preload = 'auto'; v.muted = true; v.defaultMuted = true;
+    v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
     let done = false;
-    const fail = m => { if (done) return; done = true; URL.revokeObjectURL(url); reject(new Error(m)); };
-    v.onloadedmetadata = () => {
-      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
-      v.currentTime = Math.min(1, d * 0.25);
-    };
-    v.onseeked = () => {
+    const timer = setTimeout(() => fail('video frame timed out'), 8000);
+    const cleanup = () => { clearTimeout(timer); try { v.pause(); } catch (e) {} try { URL.revokeObjectURL(url); } catch (e) {} };
+    const fail = m => { if (done) return; done = true; cleanup(); reject(new Error(m)); };
+    const grab = () => {
       if (done) return;
+      const w = v.videoWidth, h = v.videoHeight;
+      if (!w || !h) return;   // frame not decoded yet — wait for the next callback
       try {
         const c = document.createElement('canvas');
-        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.width = w; c.height = h;
         c.getContext('2d').drawImage(v, 0, 0);
         c.toBlob(blob => {
           if (!blob) return fail('could not read video frame');
-          done = true; URL.revokeObjectURL(url);
+          done = true; cleanup();
           const base = (file.name || 'video').replace(/\.[^.]+$/, '');
           resolve(new File([blob], base + '.jpg', {type: 'image/jpeg', lastModified: file.lastModified || Date.now()}));
         }, 'image/jpeg', 0.92);
       } catch (e){ fail('could not read video frame'); }
     };
+    v.onloadeddata = () => {
+      const d = isFinite(v.duration) && v.duration > 0 ? v.duration : 2;
+      try { v.currentTime = Math.min(1, d * 0.25); } catch (e){ grab(); }
+    };
+    v.onseeked = grab;
+    // requestVideoFrameCallback fires when a real frame is painted — the most
+    // reliable "the frame is ready" signal on iOS, where 'seeked' can be flaky.
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) v.requestVideoFrameCallback(() => grab());
     v.onerror = () => fail('could not read video');
     v.src = url;
+    // Muted autoplay is allowed and forces iOS to actually decode a frame.
+    v.play().catch(() => {});
   });
+}
+// A dark placeholder still so a clip can always upload even if the phone
+// refuses to hand us a frame from it.
+async function makePlaceholderPoster(){
+  const c = document.createElement('canvas'); c.width = 720; c.height = 1280;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center';
+  ctx.font = '120px -apple-system, Helvetica'; ctx.fillText('🎬', c.width/2, c.height/2 - 10);
+  ctx.fillStyle = '#7ddfa6'; ctx.font = '600 40px -apple-system, Helvetica';
+  ctx.fillText('Video', c.width/2, c.height/2 + 70);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  return new File([blob], 'poster.jpg', {type: 'image/jpeg'});
 }
 function isVideo(file){ return (file.type || '').startsWith('video/') || /\.(mp4|mov|m4v|avi|webm|3gp|mkv)$/i.test(file.name || ''); }
 // Turn a picked file into a photo file: extract a frame if it's a video.
@@ -1065,7 +1187,76 @@ async function asImageFile(file, progressCb){
   return file;
 }
 
-// ---------- staged update photos (one date per photo) ----------
+// ---------- staged update items: photos and video clips ----------
+const MAX_VIDEO_MB = 25, MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
+// Turn a picked file into a staged upload item. A video keeps the real clip
+// plus an auto-grabbed poster still; a photo passes through (a frame is
+// extracted only if someone hands us a video where a photo is expected).
+async function stageItem(file, forcedDate){
+  if (isVideo(file)){
+    if (file.size > MAX_VIDEO_BYTES) throw new Error(`Video is ${(file.size/1048576).toFixed(0)} MB — over the ${MAX_VIDEO_MB} MB limit.`);
+    // Grab a poster frame; if the phone won't give us one, fall back to a
+    // placeholder so the clip still uploads rather than silently blocking.
+    let poster;
+    try { poster = await videoToImageFile(file); }
+    catch (e){ poster = await makePlaceholderPoster(); }
+    const {date, time} = await bestPhotoDateTime(file);
+    return {file, poster, date: forcedDate || date, time, kind: 'video'};
+  }
+  const f = await asImageFile(file);
+  const {date, time} = await bestPhotoDateTime(f);
+  return {file: f, date: forcedDate || date, time, kind: 'photo'};
+}
+
+// ---------- native video picker (iOS/Android) ----------
+// The web <input type=file> reliably returns photos but not videos inside the
+// Capacitor WebView (iOS fails to hand the clip over). On the native app we
+// pick videos through the FilePicker plugin instead and feed the real file
+// into the same upload pipeline.
+function isNativeApp(){ const C = window.Capacitor; return !!(C && C.isNativePlatform && C.isNativePlatform()); }
+async function pickNativeVideos(limit){
+  const C = window.Capacitor;
+  const FilePicker = (C.Plugins && C.Plugins.FilePicker) || (C.registerPlugin && C.registerPlugin('FilePicker'));
+  if (!FilePicker) throw new Error('native picker unavailable');
+  const res = await FilePicker.pickVideos({ readData: true, limit: limit || 1 });
+  return (res.files || []).map(f => {
+    if (!f.data) throw new Error('could not read the picked video');
+    const name = f.name || `video_${Date.now()}.mp4`;
+    return new File([bytesFromB64(f.data)], name, { type: f.mimeType || 'video/mp4', lastModified: f.modifiedAt || Date.now() });
+  });
+}
+async function addNativeVideo(fixId){
+  if (isViewer()) return;
+  const fix = fixes.find(f => f.id === fixId);
+  const msgEl = document.getElementById(`upMsg-${fixId}`);
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
+  let files;
+  try { files = await pickNativeVideos(3); }
+  catch (e){
+    const m = (e && e.message || '') + '';
+    if (/cancel/i.test(m)) return;   // user closed the picker
+    msgEl.className='row-msg err'; msgEl.textContent = m || 'Could not open the video picker.'; return;
+  }
+  if (!files.length) return;
+  const ok = files.filter(f => f.size <= MAX_VIDEO_BYTES);
+  const over = files.length - ok.length;
+  if (over){ msgEl.className='row-msg err'; msgEl.textContent = `${over} video(s) over ${MAX_VIDEO_MB} MB — skipped.`; }
+  if (!ok.length) return;
+  try {
+    msgEl.className='row-msg';
+    const items = [];
+    for (const f of ok){ msgEl.textContent = 'Preparing video…'; items.push(await stageItem(f)); }
+    const added = await uploadPhotoItems(fix, items, t => { msgEl.textContent = t; });
+    fix.photos = (fix.photos || []).concat(added);
+    touch(fix);
+    msgEl.textContent = 'Saving…';
+    await commitFixes(`video update: ${fix.id} (+${added.length})`);
+    renderMapAndList();
+    const m2 = document.getElementById(`upMsg-${fixId}`);
+    if (m2){ m2.className='row-msg ok'; m2.textContent = `Added ${added.length} video(s).`; }
+  } catch (e){ msgEl.className='row-msg err'; msgEl.textContent = e.message || 'Upload failed.'; }
+}
+
 const staged = {};
 async function stageFiles(fixId){
   const input = document.getElementById(`upFiles-${fixId}`);
@@ -1073,25 +1264,24 @@ async function stageFiles(fixId){
   const fix = fixes.find(x => x.id === fixId);
   const files = Array.from(input.files);
   staged[fixId] = [];
-  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each photo was taken — detected automatically, tap to correct:</div>' : '';
+  listEl.innerHTML = files.length ? '<div class="stage-hint">Check the date each item was taken — detected automatically, tap to correct:</div>' : '';
   for (const f0 of files){
-    let f;
-    try { f = await asImageFile(f0); }
+    let item;
+    try { item = await stageItem(f0); }
     catch (e){
       const err = document.createElement('div');
       err.className = 'stage-row'; err.style.color = 'var(--red)';
-      err.textContent = `⚠ Couldn't read ${f0.name || 'that file'} — skipped.`;
+      err.textContent = `⚠ ${e.message && /limit/.test(e.message) ? e.message : `Couldn't read ${f0.name || 'that file'}`} — skipped.`;
       listEl.appendChild(err); continue;
     }
-    const {date, time} = await bestPhotoDateTime(f);
     const i = staged[fixId].length;
-    staged[fixId].push({file: f, date, time});
+    staged[fixId].push(item);
     const row = document.createElement('div');
     row.className = 'stage-row';
-    row.innerHTML = `<span class="sr-name">${isVideo(f0) ? '🎬' : '📷'} ${esc(f0.name)}</span>
-      <input type="date" value="${date}" onclick="event.stopPropagation()"
+    row.innerHTML = `<span class="sr-name">${item.kind === 'video' ? '🎬' : '📷'} ${esc(f0.name)}</span>
+      <input type="date" value="${item.date}" onclick="event.stopPropagation()"
         onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
-      <span class="sr-day">Day ${dayNumber(fix, date)}</span>`;
+      <span class="sr-day">Day ${dayNumber(fix, item.date)}</span>`;
     listEl.appendChild(row);
   }
 }
@@ -1208,11 +1398,13 @@ async function deletePhoto(fixId, flatIdx){
   photoGroups(fix).forEach(g => g.photos.forEach(p => flat.push(p)));
   const p = flat[flatIdx];
   if (!p) return;
-  if (!confirm(`Delete this photo (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
+  const kind = p.type === 'video' ? 'video' : 'photo';
+  if (!confirm(`Delete this ${kind} (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  msgEl.className = 'row-msg'; msgEl.textContent = 'Deleting photo…';
+  msgEl.className = 'row-msg'; msgEl.textContent = `Deleting ${kind}…`;
   try {
-    if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+    if (p.path) await ghDeleteFile(p.path + '.enc', `delete ${kind}: ${fix.id}`);
+    if (p.poster) await ghDeleteFile(p.poster + '.enc', `delete poster: ${fix.id}`).catch(() => {});
     fix.photos = fix.photos.filter(x => x !== p);
     touch(fix);
     await commitFixes(`remove photo: ${fix.id}`);
@@ -1235,6 +1427,7 @@ async function deleteFix(fixId){
   try {
     for (const p of (fix.photos || [])){
       if (p.path) await ghDeleteFile(p.path + '.enc', `delete photo: ${fix.id}`);
+      if (p.poster) await ghDeleteFile(p.poster + '.enc', `delete poster: ${fix.id}`).catch(() => {});
     }
     const before = fixes;
     fixes = fixes.filter(f => f.id !== fixId);
@@ -1256,8 +1449,8 @@ async function deleteFix(fixId){
 // ---------- pick map ----------
 function initPickMap(){
   pickMap = L.map('pickMap', {zoomControl:true}).setView([9.0, -79.5], 6);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri', maxZoom: 19, maxNativeZoom: 16
   }).addTo(pickMap);
   pickMap.on('click', (e) => setPickedLocation(e.latlng.lat, e.latlng.lng));
 }
@@ -1401,14 +1594,17 @@ function photoCountHint(){
   const hint = document.getElementById('fPhotosHint');
   if (!n){
     hint.style.color = '';
-    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos are turned into a still automatically.';
+    hint.textContent = 'At least 1 photo or video is required to report a pothole, up to a maximum of 3. Videos (up to 25 MB each) are kept and play in the timeline.';
   } else if (n > 3){
     hint.style.color = 'var(--red)';
     hint.textContent = `${n} files selected — the maximum is 3. Remove some before reporting.`;
   } else {
     const vids = [...document.getElementById('fPhotos').files].filter(isVideo).length;
-    hint.style.color = 'var(--accent)';
-    hint.textContent = `${n}/3 selected ✓${vids ? ` — ${vids} video(s) will become a still` : ''}`;
+    const over = [...document.getElementById('fPhotos').files].filter(f => isVideo(f) && f.size > MAX_VIDEO_BYTES).length;
+    hint.style.color = over ? 'var(--red)' : 'var(--accent)';
+    hint.textContent = over
+      ? `${over} video(s) over the ${MAX_VIDEO_MB} MB limit — remove or replace them.`
+      : `${n}/3 selected ✓${vids ? ` — ${vids} video(s) included` : ''}`;
   }
 }
 
@@ -1470,8 +1666,7 @@ async function logFix(){
   try {
     const items = [];
     for (const f of Array.from(photoInput.files)){
-      const img = await asImageFile(f, t => { msg.textContent = t; });
-      items.push({file: img, date: dateVal, time: (await bestPhotoDateTime(img)).time});
+      items.push(await stageItem(f, dateVal));   // throws (caught below) if a video is over the size limit
     }
 
     entry.photos = await uploadPhotoItems(entry, items, t => { msg.textContent = t; });
@@ -1700,11 +1895,21 @@ function fixFrames(fix){
   photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
   return frames;
 }
-function showFrame(){
+function showFrame(posterOnly){
   const f = lbFrames[lbIdx];
-  photoURL(f.p).then(u => { document.getElementById('showImg').src = u; });
+  const img = document.getElementById('showImg'), vid = document.getElementById('showVid');
+  const asVideo = f.p.type === 'video' && !posterOnly;   // timelapse (posterOnly) shows the still
+  if (asVideo){
+    img.style.display = 'none'; vid.style.display = '';
+    vid.muted = true; vid.defaultMuted = true;   // videos are silent in-app (audio stays in the file but is never played or shared)
+    mediaURL(f.p.path).then(u => { vid.src = u; vid.play().catch(() => {}); }).catch(() => {});
+  } else {
+    try { vid.pause(); } catch (e) {}
+    vid.style.display = 'none'; img.style.display = '';
+    photoURL(f.p).then(u => { img.src = u; });   // poster for a video, the image itself for a photo
+  }
   document.getElementById('showDay').textContent = `Day ${f.day}`;
-  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
+  document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'}${f.p.type === 'video' ? ' · 🎬' : ''} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
 }
 function openLightbox(fixId, idx){
   lbFix = fixes.find(f => f.id === fixId);
@@ -1724,7 +1929,7 @@ function navShow(d){
 function playShow(fixId){
   openLightbox(fixId, 0);
   const step = () => {
-    showFrame();
+    showFrame(true);   // timelapse: show each item as a still (video posters included)
     lbIdx = (lbIdx + 1) % lbFrames.length;
     showTimer = setTimeout(step, 1600);
   };
@@ -1732,6 +1937,8 @@ function playShow(fixId){
 }
 function stopShow(){
   clearTimeout(showTimer); showTimer = null;
+  const vid = document.getElementById('showVid');
+  try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) {}
   document.getElementById('showOverlay').classList.remove('on');
 }
 document.addEventListener('keydown', (e) => {
@@ -1753,6 +1960,28 @@ async function exportVideo(fixId, btn){
   try {
     btn.textContent = 'Loading photos…';
     const imgs = await Promise.all(frames.map(async f => loadImg(await photoURL(f.p))));
+
+    // Video frames should PLAY inside the teaser, not just show their poster.
+    // Preload each clip into a muted, inline <video> we can draw onto the canvas
+    // frame-by-frame during its segment. (A photo slot stays null.)
+    btn.textContent = 'Loading clips…';
+    const vids = await Promise.all(frames.map(async f => {
+      if (f.p.type !== 'video') return null;
+      try {
+        const url = await mediaURL(f.p.path);
+        const v = document.createElement('video');
+        v.src = url; v.muted = true; v.defaultMuted = true; v.playsInline = true;
+        v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+        v.setAttribute('muted', ''); v.preload = 'auto';
+        await new Promise(res => {
+          let done = false; const ok = () => { if (!done){ done = true; res(); } };
+          v.onloadeddata = ok; v.oncanplaythrough = ok; v.onerror = ok;
+          setTimeout(ok, 8000); v.load();
+        });
+        return v.videoWidth ? v : null;
+      } catch (e){ return null; }
+    }));
+    const hasVid = i => frames[i].p.type === 'video' && !!vids[i];
 
     // Brand logo + optional soundtrack (drop assets/teaser_music.mp3 in the repo to enable music)
     btn.textContent = 'Loading assets…';
@@ -1778,8 +2007,12 @@ async function exportVideo(fixId, btn){
     } catch (e){ audioDest = null; }
 
     // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
-    const W = 1280, H = 720, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800;
-    const FRAME_MS = Math.max(200, Math.min(1100, Math.floor((MAX_MS - LOGO_MS * 2 - LOC_MS) / imgs.length)));
+    const W = 1080, H = 1920, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800, VIDEO_MS = 6000; // 9:16 vertical for iPhone
+    // Videos play for up to VIDEO_MS each; photos share whatever time is left.
+    const nVideos = imgs.reduce((n, _, i) => n + (hasVid(i) ? 1 : 0), 0);
+    const nPhotos = imgs.length - nVideos;
+    const photoBudget = MAX_MS - LOGO_MS * 2 - LOC_MS - nVideos * VIDEO_MS;
+    const FRAME_MS = nPhotos > 0 ? Math.max(200, Math.min(1100, Math.floor(photoBudget / nPhotos))) : 700;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const stream = c.captureStream(30);
@@ -1814,12 +2047,13 @@ async function exportVideo(fixId, btn){
       }
     };
     const fmtDate = (ds) => new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
-    const photoFrame = (i) => {
-      const im = imgs[i], f = frames[i];
+    const mediaFrame = (i, src) => {
+      const f = frames[i];
+      const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
       ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
-      const s = Math.min(W / im.width, H / im.height);
-      const w = im.width * s, h = im.height * s;
-      ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+      const s = Math.min(W / sw, H / sh);
+      const w = sw * s, h = sh * s;
+      ctx.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
       const g = ctx.createLinearGradient(0, H - 210, 0, H);
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
       ctx.fillStyle = g; ctx.fillRect(0, H - 210, W, 210);
@@ -1847,7 +2081,24 @@ async function exportVideo(fixId, btn){
       [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
       [`${tag} · ${isFixed(fix) ? 'Fixed ' + fix.fix_date : 'Reported ' + fix.report_date}`, '#999', '400 24px -apple-system, Helvetica'],
     ]), ms: LOC_MS});
-    for (let i = 0; i < imgs.length; i++) segments.push({draw: () => photoFrame(i), ms: FRAME_MS});
+    for (let i = 0; i < imgs.length; i++){
+      if (hasVid(i)){
+        const v = vids[i];
+        const durMs = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration * 1000) : VIDEO_MS;
+        const clipMs = Math.min(VIDEO_MS, durMs);
+        // Play the MIDDLE of the clip: the start of a phone video is usually the
+        // weakest bit (raising/aiming the phone), so center the 6s window.
+        const startSec = durMs > VIDEO_MS ? (durMs - VIDEO_MS) / 2000 : 0;
+        segments.push({
+          draw: () => mediaFrame(i, v),
+          ms: clipMs,
+          enter: () => { try { v.currentTime = startSec; const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
+          exit:  () => { try { v.pause(); } catch (e){} },
+        });
+      } else {
+        segments.push({draw: () => mediaFrame(i, imgs[i]), ms: FRAME_MS});
+      }
+    }
     segments.push({draw: logoCard, ms: LOGO_MS});
 
     btn.textContent = 'Rendering…';
@@ -1862,11 +2113,14 @@ async function exportVideo(fixId, btn){
     await new Promise(resolve => {
       let i = 0, segStart = performance.now();
       const t0 = performance.now();
+      if (segments[0].enter) segments[0].enter();
       const iv = setInterval(() => {
         const now = performance.now();
         if (now - segStart >= segments[i].ms){
+          if (segments[i].exit) segments[i].exit();
           i++; segStart = now;
           if (i >= segments.length){ clearInterval(iv); return resolve(); }
+          if (segments[i].enter) segments[i].enter();
         }
         const el = now - segStart;
         if (i > 0 && el < FADE_MS){
@@ -1889,13 +2143,77 @@ async function exportVideo(fixId, btn){
     const blob = new Blob(chunks, {type: mime.split(';')[0]});
     const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
     const fname = `LogPothole_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fname; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const resetBtn = (label) => {
+      btn.textContent = label;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+    };
 
-    btn.textContent = 'Downloaded ✓';
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+    // Inside the Capacitor iOS app both a plain <a download> and the browser's
+    // Web Share silently fail (the app runs on a custom scheme), so the video
+    // just vanished. Use the native Filesystem + Share plugins: write the clip,
+    // then open the real iOS sheet ("Save Video" to Photos / "Save to Files").
+    const Cap = window.Capacitor;
+    const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+    if (isNative){
+      try {
+        // This Capacitor runtime exposes native plugins on Capacitor.Plugins,
+        // and does NOT put registerPlugin on the global bridge — reach the
+        // plugins via Capacitor.Plugins first, fall back to registerPlugin only
+        // if it actually exists.
+        const Plugins = Cap.Plugins || {};
+        const Filesystem = Plugins.Filesystem || (typeof Cap.registerPlugin === 'function' ? Cap.registerPlugin('Filesystem') : null);
+        const Share = Plugins.Share || (typeof Cap.registerPlugin === 'function' ? Cap.registerPlugin('Share') : null);
+        if (!Filesystem || !Share) throw new Error('plugins unavailable (Capacitor.Plugins has: ' + Object.keys(Plugins).join(', ') + ')');
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).split(',')[1] || '');
+          r.onerror = () => rej(new Error('could not encode the video'));
+          r.readAsDataURL(blob);
+        });
+        let written;
+        try {
+          written = await Filesystem.writeFile({path: fname, data: b64, directory: 'CACHE'});
+        } catch (e){ throw new Error('writeFile: ' + (e && (e.message || e.errorMessage) || JSON.stringify(e))); }
+        try {
+          await Share.share({title: fname, files: [written.uri]});
+        } catch (e){
+          const m = (e && (e.message || e.errorMessage) || '') + '';
+          if (/cancel/i.test(m)) { resetBtn('Ready'); return; }  // user dismissed the sheet
+          throw new Error('share: ' + (m || JSON.stringify(e)));
+        }
+        resetBtn('Saved ✓');
+        return;
+      } catch (err) {
+        alert('Couldn’t save the video — please try again.');
+        btn.textContent = orig; btn.disabled = false;
+        return;
+      }
+    }
+
+    // Browser: prefer Web Share (a fresh tap opens the OS sheet), else download.
+    const file = new File([blob], fname, {type: blob.type});
+    if (navigator.canShare && navigator.canShare({files: [file]})){
+      btn.textContent = '📤 Save video';
+      btn.disabled = false;
+      btn.onclick = async (ev) => {
+        ev.stopPropagation();
+        try {
+          await navigator.share({files: [file], title: fname});
+        } catch (err) {
+          if (err && err.name === 'AbortError') return; // user closed the sheet
+          const u = URL.createObjectURL(file);
+          const dl = document.createElement('a');
+          dl.href = u; dl.download = fname; dl.click();
+          setTimeout(() => URL.revokeObjectURL(u), 10000);
+        }
+      };
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      resetBtn('Downloaded ✓');
+    }
   } catch (e) {
     alert('Video export failed: ' + (e.message || e));
     btn.textContent = orig; btn.disabled = false;
@@ -1905,8 +2223,8 @@ async function exportVideo(fixId, btn){
 // ---------- fixed map / list ----------
 function initListMap(){
   listMap = L.map('listMap', {zoomControl:true}).setView([9.0, -79.5], 5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri', maxZoom: 19, maxNativeZoom: 16
   }).addTo(listMap);
 }
 
@@ -1978,8 +2296,10 @@ function renderMapAndList(){
             ${flat.map((it, idx) => `
               <div class="car-item">
                 <div class="car-day">Day ${it.day}</div>
-                ${isMaster() ? `<button class="ph-del" title="Delete this photo" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
-                <img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>
+                ${isMaster() ? `<button class="ph-del" title="Delete this ${it.p.type === 'video' ? 'video' : 'photo'}" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
+                ${it.p.type === 'video'
+                  ? `<div class="car-media" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"><img loading="lazy" data-encpath="${esc(it.p.poster || it.p.path)}" alt="Day ${it.day}"/><span class="vid-badge">▶</span></div>`
+                  : `<img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>`}
                 <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
@@ -1998,6 +2318,7 @@ function renderMapAndList(){
       ? ''
       : `<input type="file" id="upFiles-${f.id}" accept="image/*,video/*" multiple onclick="event.stopPropagation()" onchange="stageFiles('${f.id}')"/>
           <button class="btn small" onclick="event.stopPropagation();addUpdate('${f.id}')">${(fixed || !isMaster()) ? 'Add photos' : 'Upload "after" photo — marks fixed'}</button>
+          ${isNativeApp() ? `<button class="btn small secondary" onclick="event.stopPropagation();addNativeVideo('${f.id}')">🎬 Add video</button>` : ''}
           ${!isMaster() ? '' : `<button class="btn small" id="saveDates-${f.id}" style="display:none;background:var(--orange);" onclick="event.stopPropagation();saveDates('${f.id}')">Save date changes</button>`}`;
 
     const detailInner = (isMaster() && editFixId === f.id)
