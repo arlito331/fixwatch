@@ -224,23 +224,17 @@ a{color:inherit;}
 <div class="login-back" id="loginBack" onclick="if(event.target===this)closeLogin()">
   <div class="login-card">
     <div class="login-title">Sign in</div>
-    <div class="login-sub" id="lgSub">Ask Ariel for your user and password. They stay saved in this browser — you only do this once.</div>
+    <div class="login-sub">Ask Ariel for your user and password. They stay saved in this browser — you only do this once.</div>
     <div class="field">
       <label>User</label>
       <input id="lgUser" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="master · rd · ecuador · guatemala · korea"/>
     </div>
     <div class="field">
-      <label>Password</label>
+      <label>Password / access code</label>
       <input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
-    </div>
-    <div class="field" id="lgCodeWrap" style="display:none;">
-      <label>PowerFix access code</label>
-      <input id="lgCode" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="starts with gh…" onkeydown="if(event.key==='Enter')saveAccessCode()"/>
-      <div class="field-hint">The password opens the map. This code is what lets this phone or computer save photos and reports.</div>
     </div>
     <div class="login-msg" id="lgMsg"></div>
     <div class="login-actions">
-      <button class="btn" id="lgCodeBtn" style="display:none;" onclick="saveAccessCode()">Save access code</button>
       <button class="btn" onclick="doLogin()">Sign in</button>
       <button class="btn secondary" onclick="closeLogin()">Cancel</button>
       <button class="btn secondary" id="lgOut" style="display:none;margin-left:auto;" onclick="signOut()">Sign out</button>
@@ -250,13 +244,6 @@ a{color:inherit;}
 
 <div class="trial-banner" id="trialBanner">
   <b>View only</b><span id="trialWhere"></span> — browse every pothole PowerFix has logged, with its full photo timeline. This account cannot report, change or delete anything.
-</div>
-
-<!-- Signed in, but this device has no access code: every save is refused.
-     Lives outside the views so it shows on the map tab too, which is where
-     photos get added. -->
-<div class="setup-banner" id="codeBanner">
-  You are signed in, but this device <b style="text-decoration:none;cursor:default;">cannot save yet</b> — <b onclick="promptAccessCode()">paste the PowerFix access code</b> to add photos and report potholes. Ask Ariel for it.
 </div>
 
 <div class="tabs">
@@ -487,19 +474,6 @@ function isField(){ return localStorage.getItem('fw_role') === 'field'; }
 // Real GitHub codes all start with gh… — used to tell a staff code apart from
 // a mistyped tryout password instead of accepting nonsense as a credential.
 function looksLikeCode(s){ return /^gh[a-z]_|^github_pat_/i.test(s); }
-// Codes arrive pasted from WhatsApp or mail, so they come wrapped in quotes,
-// spaces or a stray newline. Strip that instead of silently rejecting them.
-function cleanCode(s){ return (s || '').trim().replace(/^["'`]+|["'`]+$/g, '').replace(/\s+/g, ''); }
-// Signed in with a writing role, but no access code on this device: the map
-// opens and every save is refused. This state used to be invisible — the gear
-// dot stayed green and the only message was "sign in first", to someone who
-// had just signed in.
-function needsCode(){ return hasDataKey() && !isTryout() && !getGhToken(); }
-// Shown wherever a save is refused for want of the code — with the way to fix
-// it right there, because the person is already looking at that spot.
-const NO_CODE_HTML = 'You are signed in, but this device cannot save yet. '
-  + '<b style="cursor:pointer;text-decoration:underline" onclick="event.stopPropagation();promptAccessCode()">Paste the PowerFix access code</b>'
-  + ' to add photos — ask Ariel for it.';
 function isTryout(){ const r = localStorage.getItem('fw_role'); return r === 'tryout' || r === 'factory'; }
 // Tryout accounts are partner logins: they look, they never touch. Every
 // write path checks this, so a viewer cannot report, upload, edit or delete.
@@ -525,23 +499,13 @@ function isTerritory(){ return localStorage.getItem('fw_role') === 'territory' &
 function myCountry(){ return localStorage.getItem('fw_country') || null; }
 
 function promptToken(){ openLogin(); }
-function openLogin(opts){
-  // Opens in code mode when asked, or on its own when the account can write
-  // but this device has no code yet — the gear is the one control everybody
-  // already knows to tap.
-  const codeMode = (opts && opts.code === true) || needsCode();
+function openLogin(){
   const back = document.getElementById('loginBack');
   document.getElementById('lgMsg').textContent = '';
   document.getElementById('lgPass').value = '';
-  document.getElementById('lgCode').value = '';
-  document.getElementById('lgCodeWrap').style.display = codeMode ? '' : 'none';
-  document.getElementById('lgCodeBtn').style.display = codeMode ? '' : 'none';
-  document.getElementById('lgSub').textContent = codeMode
-    ? 'You are signed in. Paste the access code to let this device save photos and reports — ask Ariel for it.'
-    : 'Ask Ariel for your user and password. They stay saved in this browser — you only do this once.';
   document.getElementById('lgOut').style.display = hasDataKey() ? 'inline-block' : 'none';
   back.classList.add('open');
-  setTimeout(() => document.getElementById(codeMode ? 'lgCode' : 'lgUser').focus(), 50);
+  setTimeout(() => document.getElementById('lgUser').focus(), 50);
 }
 function closeLogin(){ document.getElementById('loginBack').classList.remove('open'); }
 function signOut(){
@@ -572,50 +536,20 @@ async function doLogin(){
   else localStorage.removeItem('fw_country');
   if (acct.role === 'tryout') localStorage.removeItem('fw_gh_token');
 
+  closeLogin();
   updateGearDot();
   loadFixes();
   // Writing roles still need the GitHub access code on top of the password.
-  // Ask for it in the card that is already open: a native prompt() can be
-  // suppressed on iOS, and cancelling it left no way back in.
-  if (needsCode()){
-    promptAccessCode();
-    msg.className = 'login-msg';
-    msg.textContent = 'Signed in. One step left: paste the access code so this device can save.';
-    return;
-  }
-  closeLogin();
+  if (acct.role !== 'tryout' && !getGhToken()) promptAccessCode();
 }
-function promptAccessCode(){ openLogin({code: true}); }
-// Check the code with GitHub before trusting it, so an expired or mistyped
-// one says so here instead of failing later on an upload.
-async function saveAccessCode(){
-  const el = document.getElementById('lgCode');
-  const msg = document.getElementById('lgMsg');
-  const fail = t => { msg.className = 'login-msg err'; msg.textContent = t; };
-  const code = cleanCode(el.value);
-  if (!code) return fail('Paste the access code Ariel gave you — it starts with gh.');
-  if (!looksLikeCode(code)) return fail('That is not the access code. It starts with "ghp_", "gho_" or "github_pat_" — paste the whole thing, not the password.');
-  msg.className = 'login-msg'; msg.textContent = 'Checking the code…';
-  setGhToken(code);
-  let res = null;
-  try { res = await ghFetch(`${API_BASE}${DATA_PATH}?ref=main`); } catch (e){ /* offline — keep it and let the upload retry */ }
-  if (res && (res.status === 401 || res.status === 403)){
-    localStorage.removeItem('fw_gh_token');
-    return fail('GitHub rejected that code — it expired or was revoked. Ask Ariel for the current one.');
-  }
-  el.value = '';
-  closeLogin();
-  updateGearDot();
-  loadFixes();
+function promptAccessCode(){
+  const t = prompt('Signed in. To also SAVE changes, paste the PowerFix access code (starts with gh…).\nCancel to browse read-only on this device.');
+  if (t && looksLikeCode(t.trim())){ setGhToken(t.trim()); updateGearDot(); loadFixes(); }
 }
 function updateGearDot(){
   const has = hasDataKey();
-  // Green only when this device can actually do what the account allows:
-  // signed in AND (read-only account or access code present).
-  document.getElementById('gearDot').className = 'gear-dot' + (has && !needsCode() ? ' ok' : '');
+  document.getElementById('gearDot').className = 'gear-dot' + (has ? ' ok' : '');
   document.getElementById('setupBanner').style.display = has ? 'none' : 'block';
-  const cb = document.getElementById('codeBanner');
-  if (cb) cb.style.display = needsCode() ? 'block' : 'none';
   const chip = document.getElementById('roleChip');
   if (isTerritory()){
     const t = Object.values(TERRITORIES).find(x => x.country === myCountry());
@@ -681,13 +615,6 @@ function markTokenExpired(){
   const b = document.getElementById('setupBanner');
   b.style.display = 'block';
   b.innerHTML = 'Your access code has <b>expired or was revoked</b> — <b onclick="promptAccessCode()">click here</b> to paste the new code (ask Ariel for it).';
-  // The banner above only lives on the Report tab; photos are added from the
-  // map, so say it there too.
-  const cb = document.getElementById('codeBanner');
-  if (cb){
-    cb.innerHTML = 'Your access code has expired or was revoked — <b onclick="promptAccessCode()">paste the new code</b> to keep saving. Ask Ariel for it.';
-    cb.style.display = 'block';
-  }
 }
 const TOKEN_EXPIRED_MSG = 'Access code expired or invalid — tap the gear icon (top right) and paste the new code.';
 
@@ -1496,7 +1423,7 @@ async function logFix(){
     return;
   }
   if (!getGhToken()){
-    msg.className = 'err'; msg.innerHTML = NO_CODE_HTML;
+    msg.className = 'err'; msg.textContent = 'Run the one-time setup first (gear icon, top right).';
     return;
   }
   if (!pickedLatLng){
@@ -1602,7 +1529,7 @@ async function addUpdate(fixId){
   msgEl.className = 'row-msg'; msgEl.textContent = '';
 
   if (isViewer()){ msgEl.className='row-msg err'; msgEl.textContent='This account is view only — photos are added by the PowerFix crew.'; return; }
-  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.innerHTML = NO_CODE_HTML; return; }
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Sign in first (gear icon).'; return; }
   const items = staged[fixId] || [];
   if (!items.length){ msgEl.className='row-msg err'; msgEl.textContent='Choose at least one photo.'; return; }
   if (items.some(it => !it.date)){ msgEl.className='row-msg err'; msgEl.textContent='Every photo needs a date.'; return; }
@@ -1648,7 +1575,7 @@ async function markFixed(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.innerHTML = NO_CODE_HTML; return; }
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const dateEl = document.getElementById(`fixedDate-${fixId}`);
   const date = (dateEl && dateEl.value) || new Date().toISOString().slice(0, 10);
   fix.status = 'fixed';
@@ -1668,7 +1595,7 @@ async function reopenFix(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.innerHTML = NO_CODE_HTML; return; }
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   const prevDate = fix.fix_date;
   fix.status = 'reported';
   fix.fix_date = null;
@@ -1708,7 +1635,7 @@ async function saveDates(fixId){
   if (!isMaster()) return;
   const fix = fixes.find(f => f.id === fixId);
   const msgEl = document.getElementById(`upMsg-${fixId}`);
-  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.innerHTML = NO_CODE_HTML; return; }
+  if (!getGhToken()){ msgEl.className='row-msg err'; msgEl.textContent='Run the one-time setup first (gear icon).'; return; }
   msgEl.className = 'row-msg'; msgEl.textContent = 'Saving date changes…';
   try {
     const changed = (fix.photos || []).filter(p => p._oldDate && p._oldDate !== p.date);
@@ -2171,7 +2098,7 @@ async function loadFixes(){
     catch (e){
       // The stored key no longer opens the data (rotated?) — sign this device out.
       localStorage.removeItem('fw_dk'); _dataKey = null;
-      fixes = []; renderMapAndList(); updateGearDot(); openLogin();
+      fixes = []; renderMapAndList(); openLogin();
       return;
     }
   }
