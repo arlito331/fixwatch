@@ -2030,6 +2030,7 @@ async function exportVideo(fixId, btn){
   if (!frames.length) return;
 
   btn.disabled = true; const orig = btn.textContent;
+  let vidHolder = null;   // off-screen home for the clip elements while rendering
   try {
     btn.textContent = 'Loading photos…';
     const imgs = await Promise.all(frames.map(async f => loadImg(await photoURL(f.p))));
@@ -2081,11 +2082,37 @@ async function exportVideo(fixId, btn){
 
     // Teaser is always 30 seconds or less: logo + location cards + photos + logo.
     const W = 1080, H = 1920, MAX_MS = 30000, LOGO_MS = 1600, LOC_MS = 1800, VIDEO_MS = 6000; // 9:16 vertical for iPhone
-    // Videos play for up to VIDEO_MS each; photos share whatever time is left.
+    const PHOTO_MAX_MS = 1100, PHOTO_MIN_MS = 600, VIDEO_MIN_MS = 2500;
+    // Clips and photos share one 30-second budget. Clips used to take a flat 6s
+    // each off the top, so four of them left 1s for 21 photos — every photo got
+    // the 200ms floor and the teaser flickered past, 33s long. Now clips take at
+    // most 60% of the timeline, photos never drop below PHOTO_MIN_MS, and if
+    // they still do not fit we show an evenly spaced selection instead of
+    // strobing through all of them.
     const nVideos = imgs.reduce((n, _, i) => n + (hasVid(i) ? 1 : 0), 0);
     const nPhotos = imgs.length - nVideos;
-    const photoBudget = MAX_MS - LOGO_MS * 2 - LOC_MS - nVideos * VIDEO_MS;
-    const FRAME_MS = nPhotos > 0 ? Math.max(200, Math.min(1100, Math.floor(photoBudget / nPhotos))) : 700;
+    const AVAIL_MS = MAX_MS - LOGO_MS * 2 - LOC_MS;
+    const CLIP_MS = nVideos
+      ? Math.max(VIDEO_MIN_MS, Math.min(VIDEO_MS, Math.floor(AVAIL_MS * 0.6 / nVideos)))
+      : 0;
+    const photoBudget = Math.max(0, AVAIL_MS - nVideos * CLIP_MS);
+    let FRAME_MS = PHOTO_MAX_MS, photoCap = nPhotos;
+    if (nPhotos > 0){
+      FRAME_MS = Math.floor(photoBudget / nPhotos);
+      if (FRAME_MS < PHOTO_MIN_MS){
+        FRAME_MS = PHOTO_MIN_MS;
+        photoCap = Math.max(1, Math.floor(photoBudget / PHOTO_MIN_MS));
+      }
+      FRAME_MS = Math.min(PHOTO_MAX_MS, FRAME_MS);
+    }
+    // Which photos survive when there are too many: always the first and the
+    // last, the rest spread evenly, so the before/after story still reads.
+    const photoIdx = imgs.map((_, i) => i).filter(i => !hasVid(i));
+    const keepPhoto = new Set(
+      photoCap >= photoIdx.length
+        ? photoIdx
+        : Array.from({length: photoCap}, (_, k) =>
+            photoIdx[photoCap === 1 ? 0 : Math.round(k * (photoIdx.length - 1) / (photoCap - 1))]));
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const stream = c.captureStream(30);
@@ -2120,31 +2147,47 @@ async function exportVideo(fixId, btn){
       }
     };
     const fmtDate = (ds) => new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
-    const mediaFrame = (i, src) => {
+    const drawMedia = (g2, i, src) => {
       const f = frames[i];
       const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
-      ctx.fillStyle = '#0D0D0D'; ctx.fillRect(0, 0, W, H);
+      g2.fillStyle = '#0D0D0D'; g2.fillRect(0, 0, W, H);
       const s = Math.min(W / sw, H / sh);
       const w = sw * s, h = sh * s;
-      ctx.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
-      const g = ctx.createLinearGradient(0, H - 210, 0, H);
+      g2.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
+      const g = g2.createLinearGradient(0, H - 210, 0, H);
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
-      ctx.fillStyle = g; ctx.fillRect(0, H - 210, W, 210);
-      ctx.fillStyle = '#fff'; ctx.font = '800 62px -apple-system, Helvetica';
-      ctx.fillText(`Day ${f.day}`, 44, H - 76);
-      ctx.fillStyle = '#7ddfa6'; ctx.font = '600 26px -apple-system, Helvetica';
-      ctx.fillText(fmtDate(f.date), 46, H - 34);
-      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '400 20px -apple-system, Helvetica';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${tag} · ${fix.label || 'Pothole'}`, W - 40, H - 36);
-      ctx.textAlign = 'left';
+      g2.fillStyle = g; g2.fillRect(0, H - 210, W, 210);
+      g2.fillStyle = '#fff'; g2.font = '800 62px -apple-system, Helvetica';
+      g2.fillText(`Day ${f.day}`, 44, H - 76);
+      g2.fillStyle = '#7ddfa6'; g2.font = '600 26px -apple-system, Helvetica';
+      g2.fillText(fmtDate(f.date), 46, H - 34);
+      g2.fillStyle = 'rgba(255,255,255,.55)'; g2.font = '400 20px -apple-system, Helvetica';
+      g2.textAlign = 'right';
+      g2.fillText(`${tag} · ${fix.label || 'Pothole'}`, W - 40, H - 36);
+      g2.textAlign = 'left';
       // brand watermark top-right, like the install promo video
       if (logo){
         const lw = 190, lh = lw * logo.height / logo.width;
-        ctx.globalAlpha = 0.9;
-        ctx.drawImage(logo, W - lw - 28, 22, lw, lh);
-        ctx.globalAlpha = 1;
+        g2.globalAlpha = 0.9;
+        g2.drawImage(logo, W - lw - 28, 22, lw, lh);
+        g2.globalAlpha = 1;
       }
+    };
+    const mediaFrame = (i, src) => drawMedia(ctx, i, src);
+    // A photo segment paints the same pixels on every one of its ~30 frames a
+    // second. Render it once and blit it after that: on a phone, re-running the
+    // scale + gradient + four text draws every tick is what makes the export
+    // fall behind, which is what turns the clips into stutter.
+    const frameCache = new Map();
+    const photoFrame = (i) => {
+      let off = frameCache.get(i);
+      if (!off){
+        off = document.createElement('canvas'); off.width = W; off.height = H;
+        drawMedia(off.getContext('2d'), i, imgs[i]);
+        frameCache.set(i, off);
+        while (frameCache.size > 3){ frameCache.delete(frameCache.keys().next().value); }
+      }
+      return off;
     };
 
     // Segment timeline: logo → location card → each photo → logo.
@@ -2154,25 +2197,49 @@ async function exportVideo(fixId, btn){
       [`${fix.city ? fix.city + ' · ' : ''}${fix.label || 'Pothole'}`, '#fff', '700 44px -apple-system, Helvetica'],
       [`${tag} · ${isFixed(fix) ? 'Fixed ' + fix.fix_date : 'Reported ' + fix.report_date}`, '#999', '400 24px -apple-system, Helvetica'],
     ]), ms: LOC_MS});
+    // Seeking is asynchronous: done inside the segment, the first frames of a
+    // clip were still the previous position, which read as a freeze. Seek every
+    // clip to its start before recording, and keep the elements in the document
+    // (off-screen) — a detached <video> gets deprioritised and stalls.
+    const seekTo = (v, sec) => new Promise(res => {
+      let done2 = false; const ok = () => { if (!done2){ done2 = true; v.onseeked = null; res(); } };
+      if (Math.abs(v.currentTime - sec) < 0.05) return ok();
+      v.onseeked = ok; setTimeout(ok, 1500);
+      try { v.currentTime = sec; } catch (e){ ok(); }
+    });
+    const seeks = [];
     for (let i = 0; i < imgs.length; i++){
       if (hasVid(i)){
         const v = vids[i];
-        const durMs = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration * 1000) : VIDEO_MS;
-        const clipMs = Math.min(VIDEO_MS, durMs);
+        const durMs = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration * 1000) : CLIP_MS;
+        const clipMs = Math.min(CLIP_MS, durMs);
         // Play the MIDDLE of the clip: the start of a phone video is usually the
-        // weakest bit (raising/aiming the phone), so center the 6s window.
-        const startSec = durMs > VIDEO_MS ? (durMs - VIDEO_MS) / 2000 : 0;
+        // weakest bit (raising/aiming the phone), so center the window.
+        const startSec = durMs > clipMs ? (durMs - clipMs) / 2000 : 0;
+        seeks.push(seekTo(v, startSec));
         segments.push({
           draw: () => mediaFrame(i, v),
           ms: clipMs,
-          enter: () => { try { v.currentTime = startSec; const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
+          enter: () => { try { if (Math.abs(v.currentTime - startSec) > 0.05) v.currentTime = startSec;
+                               const p = v.play(); if (p) p.catch(() => {}); } catch (e){} },
+          // A clip that never started (autoplay refusal, a slow decode) used to
+          // hold a still frame for its whole segment. Nudge it each tick.
+          tick:  () => { if (v.paused){ try { const p = v.play(); if (p) p.catch(() => {}); } catch (e){} } },
           exit:  () => { try { v.pause(); } catch (e){} },
         });
-      } else {
-        segments.push({draw: () => mediaFrame(i, imgs[i]), ms: FRAME_MS});
+      } else if (keepPhoto.has(i)) {
+        segments.push({draw: () => ctx.drawImage(photoFrame(i), 0, 0), ms: FRAME_MS});
       }
     }
     segments.push({draw: logoCard, ms: LOGO_MS});
+
+    if (vids.some(Boolean)){
+      vidHolder = document.createElement('div');
+      vidHolder.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+      vids.forEach(v => { if (v) vidHolder.appendChild(v); });
+      document.body.appendChild(vidHolder);
+      await Promise.all(seeks);
+    }
 
     btn.textContent = 'Rendering…';
     rec.start();
@@ -2181,35 +2248,45 @@ async function exportVideo(fixId, btn){
     // Timer-driven timeline with crossfades between segments. Timers, not rAF:
     // browsers throttle rAF in hidden/embedded views, which froze or blacked
     // out the recording. Every paint op feeds a real frame to captureStream.
-    const FADE_MS = 400;
+    // A 400ms crossfade across a 600ms photo left almost no clean frame. Never
+    // spend more than a third of a segment fading into it.
+    const fadeFor = (ms) => Math.min(400, Math.max(120, Math.floor(ms / 3)));
     const totalMs = segments.reduce((s, x) => s + x.ms, 0);
+    // Segment boundaries are absolute offsets from the start. Restarting the
+    // clock at each segment let every one overrun by up to a tick, and 25 of
+    // those pushed a 29.6s teaser past the 30s rule. If a tick arrives late the
+    // timeline skips ahead instead of stretching.
+    const bounds = []; { let acc = 0; for (const seg of segments){ acc += seg.ms; bounds.push(acc); } }
     await new Promise(resolve => {
-      let i = 0, segStart = performance.now();
+      let i = 0;
       const t0 = performance.now();
       if (segments[0].enter) segments[0].enter();
       const iv = setInterval(() => {
-        const now = performance.now();
-        if (now - segStart >= segments[i].ms){
+        const el0 = performance.now() - t0;
+        while (i < segments.length && el0 >= bounds[i]){
           if (segments[i].exit) segments[i].exit();
-          i++; segStart = now;
-          if (i >= segments.length){ clearInterval(iv); return resolve(); }
-          if (segments[i].enter) segments[i].enter();
+          i++;
+          if (i < segments.length && segments[i].enter) segments[i].enter();
         }
-        const el = now - segStart;
-        if (i > 0 && el < FADE_MS){
+        if (i >= segments.length){ clearInterval(iv); return resolve(); }
+        if (segments[i].tick) segments[i].tick();
+        const el = el0 - (i ? bounds[i - 1] : 0);
+        const fade = fadeFor(segments[i].ms);
+        if (i > 0 && el < fade){
           segments[i - 1].draw();
-          ctx.globalAlpha = el / FADE_MS;
+          ctx.globalAlpha = el / fade;
           segments[i].draw();
           ctx.globalAlpha = 1;
         } else {
           segments[i].draw();
         }
-        btn.textContent = `Rendering… ${Math.min(99, Math.round((now - t0) / totalMs * 100))}%`;
+        btn.textContent = `Rendering… ${Math.min(99, Math.round(el0 / totalMs * 100))}%`;
       }, 33);
     });
 
     rec.stop();
     await done;
+    if (vidHolder){ vidHolder.remove(); vidHolder = null; }
     if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
     if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
 
@@ -2288,6 +2365,7 @@ async function exportVideo(fixId, btn){
       resetBtn('Downloaded ✓');
     }
   } catch (e) {
+    if (vidHolder) vidHolder.remove();
     alert('Video export failed: ' + (e.message || e));
     btn.textContent = orig; btn.disabled = false;
   }
