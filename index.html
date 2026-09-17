@@ -2055,6 +2055,38 @@ async function exportVideo(fixId, btn){
         return v.videoWidth ? v : null;
       } catch (e){ return null; }
     }));
+    // A clip that loads is not the same as a clip that plays. iPhone .mov
+    // files (HEVC) decode on some browsers and not others, and a clip that
+    // never advances used to hold the teaser on one still frame for its whole
+    // segment — the "freezing". So play each one for a moment and check the
+    // clock actually moved; the ones that do not are demoted to their poster
+    // still and simply take a photo slot. They need to be in the document for
+    // this: a detached <video> gets deprioritised and may not start at all.
+    if (vids.some(Boolean)){
+      vidHolder = document.createElement('div');
+      vidHolder.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+      vids.forEach(v => { if (v) vidHolder.appendChild(v); });
+      document.body.appendChild(vidHolder);
+      btn.textContent = 'Checking clips…';
+      await Promise.all(vids.map(async (v, i) => {
+        if (!v) return;
+        try {
+          const before = v.currentTime;
+          const pr = v.play(); if (pr) await pr.catch(() => {});
+          // Poll rather than wait a fixed moment: a slow phone can take a
+          // second to start a clip, and calling that dead would throw away
+          // good video. Accept the instant the clock moves.
+          let moved = false;
+          for (let t = 0; t < 1500 && !moved; t += 100){
+            await new Promise(r => setTimeout(r, 100));
+            moved = v.currentTime > before + 0.05;
+          }
+          v.pause();
+          if (!moved) vids[i] = null;
+          else { try { v.currentTime = 0; } catch (e){} }
+        } catch (e){ vids[i] = null; }
+      }));
+    }
     const hasVid = i => frames[i].p.type === 'video' && !!vids[i];
 
     // Brand logo + optional soundtrack (drop assets/teaser_music.mp3 in the repo to enable music)
@@ -2106,43 +2138,50 @@ async function exportVideo(fixId, btn){
       : 0;
 
     // 2. Photos (plus the posters of any clip that did not make the cut) share
-    //    what is left.
+    //    what is left. Nothing is ever padded: with little material the teaser
+    //    simply comes in under 30s rather than holding frames longer.
     const photoIdx = imgs.map((_, i) => i).filter(i => !keepVid.has(i));
     const photoBudget = Math.max(0, AVAIL_MS - nVideos * CLIP_MS);
-    let FRAME_MS = PHOTO_MAX_MS, photoCap = photoIdx.length;
-    if (photoIdx.length > 0){
-      FRAME_MS = Math.floor(photoBudget / photoIdx.length);
-      if (FRAME_MS < PHOTO_MIN_MS){
-        FRAME_MS = PHOTO_MIN_MS;
-        photoCap = Math.max(1, Math.floor(photoBudget / PHOTO_MIN_MS));
-      }
-      FRAME_MS = Math.min(PHOTO_MAX_MS, FRAME_MS);
-    }
-    // 3. Which photos survive: walk the DAYS in order taking one photo from
-    //    each, then a second from each, and so on. Spreading by position alone
-    //    would hand most of the teaser to whichever day happens to have the most
-    //    photos; going day by day means the first day, the middle days and the
-    //    last day are all represented before any day gets a second frame.
-    const keepPhoto = new Set();
-    if (photoCap >= photoIdx.length){
-      photoIdx.forEach(i => keepPhoto.add(i));
-    } else {
+
+    // 3. Which photos, and this is the part that decides whether the teaser
+    //    reads as a story or as the same picture four times. The unit is the
+    //    DAY, not the photo: two frames from the same morning are one picture
+    //    twice. So one photo per documented day, day one first — its earliest
+    //    frame, the pothole as it was found. If there are more days than the
+    //    budget holds, the days are thinned evenly (day one and the last day
+    //    survive). Only if time is still spare does a day get a SECOND frame,
+    //    and then the widest documented gaps go first, taking that day's last
+    //    photo — the one least like the first.
+    const dayList = [];
+    {
       const byDate = new Map();
       photoIdx.forEach(i => {
         const d = frames[i].date;
         if (!byDate.has(d)) byDate.set(d, []);
         byDate.get(d).push(i);
       });
-      const days = [...byDate.keys()].sort().map(d => byDate.get(d));
-      for (let pass = 0; keepPhoto.size < photoCap; pass++){
-        let addedAny = false;
-        for (const day of days){
-          if (keepPhoto.size >= photoCap) break;
-          // Within a day, take its own spread rather than the first few in a row.
-          const order = spread(day, Math.min(day.length, photoCap));
-          if (order[pass] !== undefined){ keepPhoto.add(order[pass]); addedAny = true; }
-        }
-        if (!addedAny) break;
+      [...byDate.keys()].sort().forEach(d => dayList.push({date: d, idxs: byDate.get(d)}));
+    }
+    const maxSlots = Math.floor(photoBudget / PHOTO_MIN_MS);
+    const daysKept = spread(dayList, Math.min(dayList.length, maxSlots));
+    const keepPhoto = new Set(daysKept.map(d => d.idxs[0]));
+    let FRAME_MS = PHOTO_MAX_MS;
+    if (keepPhoto.size > 0){
+      FRAME_MS = Math.max(PHOTO_MIN_MS, Math.min(PHOTO_MAX_MS, Math.floor(photoBudget / keepPhoto.size)));
+      // Spare time after one frame per day? Hand it to second frames, starting
+      // with the days that sit beside the longest stretch of time.
+      const room = Math.floor(photoBudget / FRAME_MS) - keepPhoto.size;
+      if (room > 0){
+        const dayMs = (a, b) => Math.abs(new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z'));
+        const gapOf = (d, k) => Math.max(
+          k > 0 ? dayMs(daysKept[k - 1].date, d.date) : 0,
+          k < daysKept.length - 1 ? dayMs(d.date, daysKept[k + 1].date) : 0);
+        daysKept
+          .map((d, k) => ({d, gap: gapOf(d, k)}))
+          .filter(x => x.d.idxs.length > 1)
+          .sort((a, b) => b.gap - a.gap)
+          .slice(0, room)
+          .forEach(x => keepPhoto.add(x.d.idxs[x.d.idxs.length - 1]));
       }
     }
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -2265,13 +2304,7 @@ async function exportVideo(fixId, btn){
     }
     segments.push({draw: logoCard, ms: LOGO_MS});
 
-    if (vids.some(Boolean)){
-      vidHolder = document.createElement('div');
-      vidHolder.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
-      vids.forEach(v => { if (v) vidHolder.appendChild(v); });
-      document.body.appendChild(vidHolder);
-      await Promise.all(seeks);
-    }
+    if (seeks.length) await Promise.all(seeks);
 
     btn.textContent = 'Rendering…';
     rec.start();
