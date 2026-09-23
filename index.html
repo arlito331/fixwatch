@@ -834,15 +834,15 @@ function daysSince(dateStr){
   const todayUTC = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
   return Math.max(0, Math.round((todayUTC - fixDate) / 86400000));
 }
-// Photo "Day N" counts from the START of the pothole's timeline — the earliest
-// of its report date and any of its photo dates — so the first photo is Day 0
-// and the rest count up from there. (Anchoring only to the report/fix date
-// floored any photo taken earlier than that date to Day 0, which is why photos
-// with a correct older date got stuck on Day 0.)
+// Photo "Day N" counts from the REPAIR date once a pothole is fixed, so it
+// matches the milestone reports exactly (Day 0 = the day it was repaired, and
+// every follow-up photo is "days since repair"). Before it is fixed there is no
+// repair day yet, so it counts from the start of the timeline (earliest report
+// or photo date) — which keeps early photos from getting stuck on Day 0.
 function baseDate(f){
+  if (f.fix_date) return f.fix_date;
   const cands = [];
   if (f.report_date) cands.push(f.report_date);
-  if (f.fix_date) cands.push(f.fix_date);
   if (f.logged_at) cands.push(f.logged_at.slice(0, 10));
   (f.photos || []).forEach(p => { if (p && p.date) cands.push(p.date); });
   cands.sort();  // ISO YYYY-MM-DD sorts chronologically as text
@@ -852,6 +852,13 @@ function dayNumber(fix, dateStr){
   const a = new Date(baseDate(fix) + 'T00:00:00Z');
   const b = new Date(dateStr + 'T00:00:00Z');
   return Math.max(0, Math.round((b - a) / 86400000));
+}
+// Display label for a photo's day. A photo taken before the repair reads
+// "Before" instead of a misleading "Day 0"; everything else is "Day N" since
+// the repair (or since the timeline start on a not-yet-fixed pothole).
+function dayLabel(fix, dateStr){
+  if (fix.fix_date && dateStr && dateStr < fix.fix_date) return 'Before';
+  return 'Day ' + dayNumber(fix, dateStr);
 }
 function isFixed(f){ return f.status === 'fixed'; }
 function ageDays(f){ return daysSince(isFixed(f) ? f.fix_date : f.report_date); }
@@ -1353,8 +1360,8 @@ async function stageFiles(fixId){
     row.className = 'stage-row';
     row.innerHTML = `<span class="sr-name">${item.kind === 'video' ? '🎬' : '📷'} ${esc(f0.name)}</span>
       <input type="date" value="${item.date}" onclick="event.stopPropagation()"
-        onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent='Day '+dayNumber(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
-      <span class="sr-day">Day ${dayNumber(fix, item.date)}</span>`;
+        onchange="staged['${fixId}'][${i}].date=this.value;this.nextElementSibling.textContent=dayLabel(fixes.find(x=>x.id==='${fixId}'),this.value)"/>
+      <span class="sr-day">${dayLabel(fix, item.date)}</span>`;
     listEl.appendChild(row);
   }
 }
@@ -1472,7 +1479,7 @@ async function deletePhoto(fixId, flatIdx){
   const p = flat[flatIdx];
   if (!p) return;
   const kind = p.type === 'video' ? 'video' : 'photo';
-  if (!confirm(`Delete this ${kind} (Day ${dayNumber(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
+  if (!confirm(`Delete this ${kind} (${dayLabel(fix, p.date)} · ${p.date})?\n\nThis cannot be undone.`)) return;
   const msgEl = document.getElementById(`upMsg-${fixId}`);
   msgEl.className = 'row-msg'; msgEl.textContent = `Deleting ${kind}…`;
   try {
@@ -1821,13 +1828,13 @@ async function addUpdate(fixId){
       ? `fixed: ${fix.id}`
       : `photo update: ${fix.id}`);
     renderMapAndList();
-    const days = [...new Set(added.map(p => dayNumber(fix, p.date)))].sort((a,b) => a-b);
+    const labels = [...new Set(added.map(p => dayLabel(fix, p.date)))];
     const m2 = document.getElementById(`upMsg-${fixId}`);
     if (m2){
       m2.className = 'row-msg ok';
       m2.textContent = wasOpen
         ? `Marked fixed — ${added.length} after photo(s) attached. The dot is now green.`
-        : `Added ${added.length} photo(s) — Day ${days.join(', Day ')}.`;
+        : `Added ${added.length} photo(s) — ${labels.join(', ')}.`;
     }
   } catch (e) {
     // Photos that made it up are already in memory — re-render so the list
@@ -1882,7 +1889,7 @@ async function reopenFix(fixId){
 function photoGroups(fix){
   const groups = {};
   (fix.photos || []).forEach(p => { (groups[p.date] = groups[p.date] || []).push(p); });
-  return Object.keys(groups).sort().map(d => ({date: d, day: dayNumber(fix, d), photos: groups[d]}));
+  return Object.keys(groups).sort().map(d => ({date: d, day: dayNumber(fix, d), dayLabel: dayLabel(fix, d), photos: groups[d]}));
 }
 
 // ---------- per-photo date editing on already-uploaded photos ----------
@@ -1965,7 +1972,7 @@ let showTimer = null, lbFrames = [], lbIdx = 0, lbFix = null;
 
 function fixFrames(fix){
   const frames = [];
-  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
+  photoGroups(fix).forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, dayLabel: g.dayLabel, date: g.date})));
   return frames;
 }
 function showFrame(posterOnly){
@@ -1981,7 +1988,7 @@ function showFrame(posterOnly){
     vid.style.display = 'none'; img.style.display = '';
     photoURL(f.p).then(u => { img.src = u; });   // poster for a video, the image itself for a photo
   }
-  document.getElementById('showDay').textContent = `Day ${f.day}`;
+  document.getElementById('showDay').textContent = f.dayLabel || `Day ${f.day}`;
   document.getElementById('showSub').textContent = `${fixTag(lbFix)} · ${lbFix.label || 'Pothole'}${f.p.type === 'video' ? ' · 🎬' : ''} · ${f.date} · ${lbIdx + 1}/${lbFrames.length}`;
 }
 function openLightbox(fixId, idx){
@@ -2026,7 +2033,7 @@ async function exportVideo(fixId, btn){
   const fix = fixes.find(f => f.id === fixId);
   const groups = photoGroups(fix);
   const frames = [];
-  groups.forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, date: g.date})));
+  groups.forEach(g => g.photos.forEach(p => frames.push({p, day: g.day, dayLabel: g.dayLabel, date: g.date})));
   if (!frames.length) return;
 
   btn.disabled = true; const orig = btn.textContent;
@@ -2229,7 +2236,7 @@ async function exportVideo(fixId, btn){
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
       g2.fillStyle = g; g2.fillRect(0, H - 210, W, 210);
       g2.fillStyle = '#fff'; g2.font = '800 62px -apple-system, Helvetica';
-      g2.fillText(`Day ${f.day}`, 44, H - 76);
+      g2.fillText(f.dayLabel || `Day ${f.day}`, 44, H - 76);
       g2.fillStyle = '#7ddfa6'; g2.font = '600 26px -apple-system, Helvetica';
       g2.fillText(fmtDate(f.date), 46, H - 34);
       g2.fillStyle = 'rgba(255,255,255,.55)'; g2.font = '400 20px -apple-system, Helvetica';
@@ -2504,18 +2511,18 @@ function renderMapAndList(){
     row.className = 'fix-row' + (isOpen ? ' open' : '');
 
     const flat = [];
-    groups.forEach(g => g.photos.forEach(p => flat.push({p, day: g.day})));
+    groups.forEach(g => g.photos.forEach(p => flat.push({p, day: g.day, dayLabel: g.dayLabel})));
     const timeline = flat.length
       ? `<div class="carousel">
           <button class="car-btn" onclick="event.stopPropagation();carScroll('${f.id}',-1)">‹</button>
           <div class="car-track" id="car-${f.id}">
             ${flat.map((it, idx) => `
               <div class="car-item">
-                <div class="car-day">Day ${it.day}</div>
+                <div class="car-day">${it.dayLabel || 'Day ' + it.day}</div>
                 ${isMaster() ? `<button class="ph-del" title="Delete this ${it.p.type === 'video' ? 'video' : 'photo'}" onclick="event.stopPropagation();deletePhoto('${f.id}',${idx})">✕</button>` : ''}
                 ${it.p.type === 'video'
-                  ? `<div class="car-media" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"><img loading="lazy" data-encpath="${esc(it.p.poster || it.p.path)}" alt="Day ${it.day}"/><span class="vid-badge">▶</span></div>`
-                  : `<img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="Day ${it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>`}
+                  ? `<div class="car-media" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"><img loading="lazy" data-encpath="${esc(it.p.poster || it.p.path)}" alt="${it.dayLabel || 'Day ' + it.day}"/><span class="vid-badge">▶</span></div>`
+                  : `<img loading="lazy" data-encpath="${esc(it.p.path || '')}" alt="${it.dayLabel || 'Day ' + it.day}" onclick="event.stopPropagation();openLightbox('${f.id}',${idx})"/>`}
                 <input type="date" class="ph-date" value="${it.p.date}" data-fix="${f.id}" data-path="${esc(it.p.path || '')}" ${isMaster() ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="photoDateChanged(this)"/>
               </div>`).join('')}
           </div>
