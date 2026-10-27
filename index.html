@@ -2028,6 +2028,71 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') stopShow();
 });
 
+// ---------- WebM duration stamp ----------
+// MediaRecorder writes WebM live, with no Duration in the header, so players run
+// out of frames and freeze on the last one (and can't scrub). We know the exact
+// length, so stamp it into Segment > Info > Duration. Every result is verified
+// by loading it in a throwaway <video>; if the stamp didn't take (or the browser
+// then can't read the file) we return the original blob, so an export is never
+// made worse. Only touches live (unknown-size) WebM Segments, which is what
+// MediaRecorder produces.
+function _ebmlId(b, p){ let f=b[p], m=0x80, len=1; while(len<=4 && !(f&m)){m>>=1;len++;} let id=0; for(let k=0;k<len;k++) id=id*256+b[p+k]; return {id, len}; }
+function _ebmlSize(b, p){ let f=b[p], m=0x80, len=1; while(len<=8 && !(f&m)){m>>=1;len++;} let val=f&(m-1), unknown=val===(m-1); for(let k=1;k<len;k++){ val=val*256+b[p+k]; if(b[p+k]!==0xff) unknown=false; } return {val, len, unknown}; }
+function _ebmlFind(b, start, end, wantId){
+  let p = start;
+  while (p < end){
+    const idr = _ebmlId(b, p); const sp = p + idr.len; if (sp >= end) break;
+    const sz = _ebmlSize(b, sp); const dataStart = sp + sz.len;
+    if (idr.id === wantId) return {idStart:p, sizeStart:sp, sizeLen:sz.len, size:sz.val, dataStart, unknown:sz.unknown};
+    const dataEnd = sz.unknown ? end : dataStart + sz.val;
+    if (dataEnd <= p) break;
+    p = dataEnd;
+  }
+  return null;
+}
+function _injectWebmDuration(b, durationMs){
+  if (!(b[0]===0x1A && b[1]===0x45 && b[2]===0xDF && b[3]===0xA3)) return null;
+  const seg = _ebmlFind(b, 0, b.length, 0x18538067);           // Segment
+  if (!seg || !seg.unknown) return null;                        // only grow live (unknown-size) segments
+  const info = _ebmlFind(b, seg.dataStart, b.length, 0x1549A966); // Info
+  if (!info || info.unknown) return null;
+  const infoEnd = info.dataStart + info.size;
+  let scale = 1000000;
+  const ts = _ebmlFind(b, info.dataStart, infoEnd, 0x2AD7B1);  // TimecodeScale
+  if (ts){ let v=0; for(let k=0;k<ts.size;k++) v=v*256+b[ts.dataStart+k]; if(v>0) scale=v; }
+  const durVal = (durationMs * 1e6) / scale;
+  const existing = _ebmlFind(b, info.dataStart, infoEnd, 0x4489); // Duration
+  if (existing && existing.size === 8){
+    const out = b.slice(); new DataView(out.buffer).setFloat64(existing.dataStart, durVal, false); return out;
+  }
+  const el = new Uint8Array(11); el[0]=0x44; el[1]=0x89; el[2]=0x88; new DataView(el.buffer).setFloat64(3, durVal, false);
+  const sizeV = new Uint8Array(8); sizeV[0]=0x01; let s=info.size+el.length;
+  for(let k=7;k>=1;k--){ sizeV[k]=s&0xff; s=Math.floor(s/256); }
+  const head = b.slice(0, info.sizeStart), rest = b.slice(info.dataStart);
+  const out = new Uint8Array(head.length + sizeV.length + el.length + rest.length);
+  let o=0; out.set(head,o); o+=head.length; out.set(sizeV,o); o+=sizeV.length; out.set(el,o); o+=el.length; out.set(rest,o);
+  return out;
+}
+function _blobHasDuration(blob){
+  return new Promise(res => {
+    const v = document.createElement('video'); v.preload='metadata'; v.muted=true;
+    const url = URL.createObjectURL(blob); let done=false;
+    const fin = ok => { if(done) return; done=true; try{URL.revokeObjectURL(url);}catch(e){} res(ok); };
+    v.onloadedmetadata = () => fin(isFinite(v.duration) && v.duration > 0);
+    v.onerror = () => fin(false);
+    setTimeout(() => fin(false), 4000);
+    v.src = url;
+  });
+}
+async function fixWebmDuration(blob, durationMs){
+  try {
+    const out = _injectWebmDuration(new Uint8Array(await blob.arrayBuffer()), durationMs);
+    if (!out) return blob;
+    const fixed = new Blob([out], {type:'video/webm'});
+    return (await _blobHasDuration(fixed)) ? fixed : blob;
+  } catch (e){ return blob; }
+}
+
 // ---------- video export (client-side MP4/WebM) ----------
 async function exportVideo(fixId, btn){
   const fix = fixes.find(f => f.id === fixId);
@@ -2362,7 +2427,9 @@ async function exportVideo(fixId, btn){
     if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
     if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
 
-    const blob = new Blob(chunks, {type: mime.split(';')[0]});
+    let blob = new Blob(chunks, {type: mime.split(';')[0]});
+    // Stamp the real length so the file doesn't freeze on the last frame.
+    if (mime.includes('webm')) blob = await fixWebmDuration(blob, Math.round(totalMs));
     const safe = (fix.label || fix.id).replace(/[^a-z0-9]+/gi, '_');
     const fname = `LogPothole_${safe}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
     const resetBtn = (label) => {
