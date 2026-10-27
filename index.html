@@ -2379,7 +2379,7 @@ async function exportVideo(fixId, btn){
     if (seeks.length) await Promise.all(seeks);
 
     btn.textContent = 'Rendering…';
-    rec.start();
+    rec.start(1000);   // timeslice: flush data every second so a flaky final stop still has the footage
     if (audioSrc) audioSrc.start();
 
     // Timer-driven timeline with crossfades between segments. Timers, not rAF:
@@ -2422,7 +2422,11 @@ async function exportVideo(fixId, btn){
     });
 
     rec.stop();
-    await done;
+    // Some browsers (notably iOS Safari) don't reliably fire onstop, which left
+    // the render stuck at 99% forever. We record with a timeslice (above), so the
+    // footage is already captured — proceed after a short grace period if onstop
+    // never comes, so the export always finishes.
+    await Promise.race([done, new Promise(r => setTimeout(r, 4000))]);
     if (vidHolder){ vidHolder.remove(); vidHolder = null; }
     if (audioSrc){ try { audioSrc.stop(); } catch (e) {} }
     if (audioCtx){ try { audioCtx.close(); } catch (e) {} }
